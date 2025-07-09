@@ -502,34 +502,82 @@ export default class StepsHandler {
     }
 
     getMultiLineComments(content: string) {
-        return content.split(/\r?\n/g).reduce(
-            (res, line, i) => {
-                if (~line.search(/^\s*\/\*/)) {
-                    res.current = `${line}\n`;
-                    res.commentMode = true;
-                } else if (~line.search(/^\s*\*\//)) {
-                    res.current += `${line}\n`;
-                    res.comments[i + 1] = res.current;
-                    res.commentMode = false;
-                } else if (res.commentMode) {
-                    res.current += `${line}\n`;
+        const lines = content.split(/\r?\n/g);
+        const comments: JSDocComments = {};
+        let current = '';
+        let commentMode = false;
+        let commentStartLine = -1;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            if (~line.search(/^\s*\/\*/)) {
+                current = `${line}\n`;
+                commentMode = true;
+                commentStartLine = i;
+            } else if (~line.search(/^\s*\*\//)) {
+                current += `${line}\n`;
+                commentMode = false;
+                
+                // Find the next non-empty line after the comment
+                let nextLineIndex = i + 1;
+                while (nextLineIndex < lines.length && lines[nextLineIndex].trim() === '') {
+                    nextLineIndex++;
                 }
-                return res;
-            },
-            {
-                comments: {} as JSDocComments,
-                current: '',
-                commentMode: false,
+                
+                // Associate comment with the next non-empty line
+                if (nextLineIndex < lines.length) {
+                    comments[nextLineIndex] = current;
+                }
+                
+                current = '';
+                commentStartLine = -1;
+            } else if (commentMode) {
+                current += `${line}\n`;
             }
-        ).comments;
+        }
+        
+        return comments;
     }
 
     getFileSteps(filePath: string) {
         const fileContent = getFileContent(filePath);
         const fileComments = this.getMultiLineComments(fileContent);
         const definitionFile = clearComments(fileContent);
-        return definitionFile
-            .split(/\r?\n/g)
+        
+        // Create mapping from cleared file lines to original file lines
+        const originalLines = fileContent.split(/\r?\n/g);
+        const clearedLines = definitionFile.split(/\r?\n/g);
+        const lineMapping: number[] = [];
+        
+        let originalIndex = 0;
+        for (let clearedIndex = 0; clearedIndex < clearedLines.length; clearedIndex++) {
+            // Find the corresponding line in the original file
+            while (originalIndex < originalLines.length) {
+                const clearedLine = clearedLines[clearedIndex].trim();
+                const originalLine = originalLines[originalIndex].trim();
+                
+                // If cleared line is empty, it might be a removed comment line
+                if (clearedLine === '') {
+                    // Find next non-empty original line
+                    while (originalIndex < originalLines.length && originalLines[originalIndex].trim() === '') {
+                        originalIndex++;
+                    }
+                    lineMapping[clearedIndex] = originalIndex;
+                    break;
+                } else if (originalLine.includes(clearedLine) || clearedLine.includes(originalLine)) {
+                    // Lines match
+                    lineMapping[clearedIndex] = originalIndex;
+                    originalIndex++;
+                    break;
+                } else {
+                    // Skip comment lines in original file
+                    originalIndex++;
+                }
+            }
+        }
+        
+        return clearedLines
             .reduce((steps, line, lineIndex, lines) => {
                 //TODO optimize
                 let match;
@@ -554,7 +602,10 @@ export default class StepsHandler {
                 if (match) {
                     const [, beforeGherkin, gherkinString, , stepPart] = match;
                     const gherkin = getGherkinTypeLower(gherkinString);
-                    const pos = Position.create(lineIndex, beforeGherkin.length);
+                    
+                    // Use original line number for position and comment lookup
+                    const originalLineIndex = lineMapping[lineIndex] !== undefined ? lineMapping[lineIndex] : lineIndex;
+                    const pos = Position.create(originalLineIndex, beforeGherkin.length);
                     const def = Location.create(
                         getOSPath(filePath),
                         Range.create(pos, pos)

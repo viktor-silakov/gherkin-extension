@@ -306,6 +306,133 @@ describe('Documentation parser', () => {
   });
 });
 
+describe('JSDoc with triple quotes handling', () => {
+  const sTripleQuotes = new StepsHandler(__dirname, {
+    steps: ['/data/steps/test.triple.quotes*.js'],
+    pages: {},
+    customParameters: [],
+  });
+
+  it('should correctly parse steps with triple quotes in JSDoc examples', () => {
+    const stepWithJSDocExample = sTripleQuotes.elements.find(
+      (step) => step.text === 'I test step with problematic JSDoc comments'
+    );
+    
+    expect(stepWithJSDocExample).toBeDefined();
+    expect(stepWithJSDocExample!.documentation).toBe('Step with triple quotes in JSDoc example');
+    expect((stepWithJSDocExample!.def as any).range.start.line).toBe(18); // Line where step definition is located
+  });
+
+  it('should correctly parse steps with triple quotes in JSDoc description', () => {
+    const stepWithQuotesInDesc = sTripleQuotes.elements.find(
+      (step) => step.text === 'I have step with quotes in description'
+    );
+    
+    expect(stepWithQuotesInDesc).toBeDefined();
+    expect(stepWithQuotesInDesc!.documentation).toContain('Step with triple quotes in description');
+    expect(stepWithQuotesInDesc!.documentation).toContain('This step has """triple quotes""" in the description text');
+    expect((stepWithQuotesInDesc!.def as any).range.start.line).toBe(30); // Line where step definition is located
+  });
+
+  it('should correctly parse steps with complex JSDoc and code blocks', () => {
+    const stepWithComplexJSDoc = sTripleQuotes.elements.find(
+      (step) => step.text === 'I should handle complex documentation'
+    );
+    
+    expect(stepWithComplexJSDoc).toBeDefined();
+    expect(stepWithComplexJSDoc!.documentation).toBe('Step with complex JSDoc and code blocks');
+    expect((stepWithComplexJSDoc!.def as any).range.start.line).toBe(48); // Line where step definition is located
+  });
+
+  it('should handle steps without JSDoc comments correctly', () => {
+    const stepWithoutJSDoc = sTripleQuotes.elements.find(
+      (step) => step.text === 'I have step without documentation'
+    );
+    
+    expect(stepWithoutJSDoc).toBeDefined();
+    // Should use the step definition line as documentation when no JSDoc is present
+    expect(stepWithoutJSDoc!.documentation).toContain('this.And(/I have step without documentation/');
+    expect((stepWithoutJSDoc!.def as any).range.start.line).toBe(57); // Line where step definition is located
+  });
+
+  it('should find all expected steps from the test file', () => {
+    const expectedSteps = [
+      'I test step with problematic JSDoc comments',
+      'I have step with quotes in description', 
+      'I should handle complex documentation',
+      'I have step without documentation'
+    ];
+    
+    expectedSteps.forEach(expectedStep => {
+      const foundStep = sTripleQuotes.elements.find(step => step.text === expectedStep);
+      expect(foundStep).toBeDefined();
+    });
+    
+    expect(sTripleQuotes.elements.length).toBe(4);
+  });
+});
+
+describe('getMultiLineComments', () => {
+  const handler = new StepsHandler(__dirname, {
+    steps: [],
+    pages: {},
+    customParameters: [],
+  });
+
+  it('should correctly associate comments with step definitions', () => {
+    const testContent = `/**
+ * First step comment
+ */
+this.Given(/I have first step/, function() {});
+
+/**
+ * Second step comment
+ * @example
+ * \`\`\`javascript
+ * const test = "value";
+ * \`\`\`
+ */
+this.When(/I do something/, function() {});`;
+
+    const comments = handler.getMultiLineComments(testContent);
+    
+    // Comments should be associated with the line where comment ends (line with */)
+    expect(comments[3]).toContain('First step comment');
+    expect(comments[12]).toContain('Second step comment');
+  });
+
+  it('should handle comments with triple quotes in examples', () => {
+    const testContent = `/**
+ * Step with problematic content
+ * @example
+ * \`\`\`javascript
+ * const docstring = """
+ * Triple quotes in example
+ * """;
+ * \`\`\`
+ */
+this.When(/I test triple quotes/, function() {});`;
+
+    const comments = handler.getMultiLineComments(testContent);
+    
+    expect(comments[9]).toContain('Step with problematic content');
+    expect(comments[9]).toContain('Triple quotes in example');
+  });
+
+  it('should skip empty lines when associating comments', () => {
+    const testContent = `/**
+ * Comment with empty lines after
+ */
+
+this.Given(/I have step after empty lines/, function() {});`;
+
+    const comments = handler.getMultiLineComments(testContent);
+    
+    // Comment should be associated with line 4 (includes empty lines after comment)
+    expect(comments[4]).toContain('Comment with empty lines after');
+  });
+});
+
 describe('validate', () => {
   it('should not return diagnostic for correct lines', () => {
     expect(s.validate('When I do something', 1, '')).toBeNull();

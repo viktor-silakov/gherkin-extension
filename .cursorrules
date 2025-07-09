@@ -1,0 +1,105 @@
+# Cursor IDE Rules for Gherkin Extension Development
+
+## Project Context
+This is a fork of VSCucumberAutoComplete with enhancements. All changes must be properly documented and tested.
+
+## Development Workflow Rules
+
+### 🧪 Testing Requirements
+- **ALWAYS run tests after ANY code change**: `npm test`
+- **Write tests BEFORE implementing features** (TDD approach)
+- **All tests must pass** before committing changes
+- **Add test cases for edge cases** and error conditions
+- **Test coverage should not decrease** with new changes
+
+### 📝 Documentation Requirements
+- **Update ENHANCEMENTS.md** for every significant change
+- **Use the provided template** in ENHANCEMENTS.md for consistency
+- **Document the reasoning** behind changes, not just what changed
+- **Include before/after examples** when applicable
+- **Update README.md** if user-facing functionality changes
+- **All documentation and comments must be in English**
+
+### 🔧 Code Quality Rules
+- **Follow existing code patterns** and conventions
+- **Add TypeScript types** for all new code
+- **Handle error cases gracefully** with proper error messages
+- **Use meaningful variable and function names**
+- **Add JSDoc comments** for public methods and complex logic
+- **All code comments must be in English**
+
+### 📁 File Organization
+- **Tests go in `gserver/test/`** directory
+- **Test data goes in `gserver/test/data/`** subdirectories
+- **Source code in `gserver/src/`** directory
+- **Follow existing naming conventions** for files and directories
+
+### 🚀 Enhancement Process
+1. **Identify the problem** clearly in ENHANCEMENTS.md
+2. **Create test cases** that demonstrate the issue
+3. **Implement the solution** with proper error handling
+4. **Run all tests** to ensure no regressions
+5. **Update documentation** with detailed explanation
+6. **Test manually** in VS Code environment
+
+### ⚠️ Critical Reminders
+- **This is a fork** - maintain compatibility with original API
+- **Breaking changes** must be clearly documented
+- **Performance impact** should be considered for all changes
+- **Memory leaks** must be avoided in long-running processes
+- **Cross-platform compatibility** must be maintained
+- **All documentation and code comments must be in English**
+
+### 🎯 Specific to This Project
+- **JSDoc parsing** is critical - test thoroughly with edge cases
+- **Step definition extraction** affects autocomplete functionality
+- **Comment parsing** impacts documentation display
+- **Regex handling** for step matching is performance-sensitive
+- **File watching** and parsing should be efficient
+
+### 📋 Before Committing Checklist
+- [ ] All tests pass (`npm test`)
+- [ ] ENHANCEMENTS.md updated with changes
+- [ ] Code follows existing patterns
+- [ ] Error cases handled properly
+- [ ] Manual testing completed
+- [ ] No console.log statements left in code
+- [ ] TypeScript compilation successful (`npm run compile`)
+- [ ] All documentation and comments are in English
+
+### 🔍 Code Review Focus Areas
+- **Test coverage** for new functionality
+- **Error handling** and edge cases
+- **Performance implications** of changes
+- **Documentation accuracy** and completeness
+- **Backward compatibility** maintenance
+- **Language consistency** (English only)
+
+## Example Commands
+```bash
+# Run all tests
+npm test
+
+# Compile TypeScript
+npm run compile
+
+# Run specific test file
+npm test -- --testPathPattern=steps.handler.spec.ts
+
+# Watch mode for development
+npm test -- --watch
+```
+
+## Language Requirements
+- **All documentation** must be in English
+- **All code comments** must be in English
+- **All commit messages** should be in English
+- **All variable and function names** should use English words
+
+## Remember
+Every change, no matter how small, should be:
+1. **Tested** - with automated tests
+2. **Documented** - in ENHANCEMENTS.md (in English)
+3. **Verified** - by running the full test suite
+
+This ensures the fork remains stable and maintainable while adding valuable enhancements.

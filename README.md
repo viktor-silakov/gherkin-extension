@@ -1,5 +1,9 @@
-# Cucumber Full Language Support
+# Cucumber Full Language Support (Enhanced Fork)
 VSCode Cucumber (Gherkin) Language Support + Format + Steps/PageObjects Autocomplete
+
+> **⚠️ This is a fork of the original [VSCucumberAutoComplete](https://github.com/alexkrechik/VSCucumberAutoComplete) project with additional enhancements and bug fixes.**
+> 
+> For detailed information about all enhancements and modifications, see [ENHANCEMENTS.md](./ENHANCEMENTS.md).
 
 ## This extension adds rich language support for the Cucumber (Gherkin) language to VS Code, including:
 * Syntax highlight
@@ -173,8 +177,52 @@ By default, all the `' ' "` symbols will be used do define start and the end of 
     "cucumberautocomplete.pureTextSteps": true
 }
 ```
+---
+
+## 🔧 Development (Fork-Specific)
+
+### For Contributors to This Fork
+
+This is an enhanced fork with additional features and bug fixes. When contributing:
+
+#### Development Workflow
+1. **Always run tests after changes**: `npm test`
+2. **Update documentation**: Add entries to [ENHANCEMENTS.md](./ENHANCEMENTS.md)
+3. **Follow the rules**: Check [.cursorrules](./.cursorrules) for development guidelines
+4. **Test thoroughly**: Both automated tests and manual VS Code testing
+
+#### Key Commands
+```bash
+# Run all tests (REQUIRED after every change)
+npm test
+
+# Compile TypeScript
+npm run compile
+
+# Run tests in watch mode during development
+npm test -- --watch
+```
+
+#### Documentation Requirements
+- **Every enhancement** must be documented in [ENHANCEMENTS.md](./ENHANCEMENTS.md)
+- **Use the provided template** for consistency
+- **Include test cases** for all new functionality
+- **Explain the reasoning** behind changes
+
+#### Testing Requirements
+- **All tests must pass** before committing
+- **Write tests first** (TDD approach recommended)
+- **Cover edge cases** and error conditions
+- **Maintain or improve** test coverage
+
+---
+
+## 📋 Original Project
+
 #### Issues
-Feel free to create app issues on [GitHub](https://github.com/alexkrechik/VSCucumberAutoComplete/issues)
+Feel free to create app issues on [GitHub](https://github.com/alexkrechik/VSCucumberAutoComplete/issues) for the original project.
+
+For issues specific to this fork, please create issues in this repository.
 
 #### Thank you
-If this plugin was helpful for you, you could give it a ★ Star on [GitHub](https://github.com/alexkrechik/VSCucumberAutoComplete)
+If this plugin was helpful for you, you could give it a ★ Star on the [original GitHub](https://github.com/alexkrechik/VSCucumberAutoComplete) and this fork.
