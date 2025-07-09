@@ -1,15 +1,16 @@
 {
   "name": "cucumberautocomplete-server",
   "description": "Node.JS server part of VsCucumberAutoComplete extension",
-  "version": "3.0.5",
-  "author": "Alexander Krechik",
+  "author": "Viktor Silakov, Alexander Krechik",
   "license": "MIT",
-  "engines": {
-    "node": "*"
-  },
+  "version": "0.0.2",
+  "publisher": "viktor-silakov",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexkrechik/VSCucumberAutoComplete"
+    "url": "https://github.com/viktor-silakov/gherkin-extension"
+  },
+  "engines": {
+    "node": "*"
   },
   "dependencies": {
     "doctrine": "^2.1.0",

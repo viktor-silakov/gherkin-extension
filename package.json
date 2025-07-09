@@ -2,7 +2,7 @@
   "name": "gherkin-extension",
   "version": "0.0.2",
   "publisher": "viktor-silakov",
-  "author": " Viktor Silakov, Alexander Krechik",
+  "author": "Viktor Silakov, Alexander Krechik",
   "license": "MIT",
   "displayName": "Gherkin VSCode Extension",
   "description": "VSCode Gherkin Full Language Support + Formatting + Autocomplete",

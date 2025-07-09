@@ -1,13 +1,13 @@
 {
   "name": "cucumberautocomplete-client",
   "description": "VSCode client part of VsCucumberAutoComplete extension",
-  "author": "Alexander Krechik",
+  "author": "Viktor Silakov, Alexander Krechik",
   "license": "MIT",
-  "version": "3.0.5",
-  "publisher": "alexkrechik",
+  "version": "0.0.2",
+  "publisher": "viktor-silakov",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexkrechik/VSCucumberAutoComplete"
+    "url": "https://github.com/viktor-silakov/gherkin-extension"
   },
   "engines": {
     "vscode": "^1.75.0"
