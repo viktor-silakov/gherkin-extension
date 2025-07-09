@@ -29,7 +29,13 @@ export interface BaseSettings {
     onTypeFormat?: boolean,
     gherkinDefinitionPart?: string,
     stepRegExSymbol?: string
-    pureTextSteps?: boolean
+    pureTextSteps?: boolean,
+    // Настройки оптимизации производительности
+    enablePerformanceOptimizations?: boolean,
+    maxCompletionItems?: number,
+    debounceDelay?: number,
+    enableRegexCaching?: boolean,
+    enableStepIndexing?: boolean
 }
 
 export interface Settings {
@@ -46,5 +52,11 @@ export interface Settings {
     onTypeFormat?: boolean,
     gherkinDefinitionPart?: string,
     stepRegExSymbol?: string
-    pureTextSteps?: boolean
+    pureTextSteps?: boolean,
+    // Настройки оптимизации производительности
+    enablePerformanceOptimizations?: boolean,
+    maxCompletionItems?: number,
+    debounceDelay?: number,
+    enableRegexCaching?: boolean,
+    enableStepIndexing?: boolean
 }

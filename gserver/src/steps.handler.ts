@@ -62,15 +62,106 @@ export default class StepsHandler {
 
     settings: Settings;
 
+    // Кэши для оптимизации производительности
+    private regexCache = new Map<string, RegExp>();
+    private partialRegexCache = new Map<string, RegExp>();
+    private processedStepCache = new Map<string, string>();
+    private stepsByGherkin = new Map<GherkinType, Step[]>();
+    private stepsByPrefix = new Map<string, Step[]>();
+
+    // Дебаунсинг для автокомплита
+    private debounceTimer: NodeJS.Timeout | null = null;
+    private static readonly DEFAULT_DEBOUNCE_DELAY = 100; // ms
+    private static readonly DEFAULT_MAX_COMPLETION_ITEMS = 50;
+
+    // Кэшированная версия создания RegExp
+    private getRegExpCached(regText: string): RegExp {
+        if (this.settings.enableRegexCaching && this.regexCache.has(regText)) {
+            return this.regexCache.get(regText)!;
+        }
+
+        const regex = new RegExp(regText);
+        if (this.settings.enableRegexCaching) {
+            this.regexCache.set(regText, regex);
+        }
+        return regex;
+    }
+
+    // Кэшированная версия partial RegExp
+    private getPartialRegExpCached(step: string): RegExp {
+        if (this.settings.enableRegexCaching && this.partialRegexCache.has(step)) {
+            return this.partialRegexCache.get(step)!;
+        }
+
+        try {
+            const partialRegText = this.getPartialRegText(step);
+            const regex = new RegExp(partialRegText);
+            if (this.settings.enableRegexCaching) {
+                this.partialRegexCache.set(step, regex);
+            }
+            return regex;
+        } catch (err) {
+            // Fallback to main regex
+            const regText = this.getRegTextForStepCached(step);
+            const regex = this.getRegExpCached(regText);
+            if (this.settings.enableRegexCaching) {
+                this.partialRegexCache.set(step, regex);
+            }
+            return regex;
+        }
+    }
+
+    // Очистка всех кэшей
+    private clearCaches(): void {
+        this.regexCache.clear();
+        this.partialRegexCache.clear();
+        this.processedStepCache.clear();
+        this.stepsByGherkin.clear();
+        this.stepsByPrefix.clear();
+    }
+
     constructor(root: string, settings: Settings) {
         const { syncfeatures, steps } = settings;
         this.settings = settings;
+        
+        // Применяем настройки оптимизации по умолчанию
+        if (this.settings.enablePerformanceOptimizations !== false) {
+            this.settings.enablePerformanceOptimizations = true;
+            this.settings.maxCompletionItems = this.settings.maxCompletionItems || StepsHandler.DEFAULT_MAX_COMPLETION_ITEMS;
+            this.settings.debounceDelay = this.settings.debounceDelay || StepsHandler.DEFAULT_DEBOUNCE_DELAY;
+            this.settings.enableRegexCaching = this.settings.enableRegexCaching !== false;
+            this.settings.enableStepIndexing = this.settings.enableStepIndexing !== false;
+        }
+        
         this.populate(root, steps);
         if (syncfeatures === true) {
             this.setElementsHash(`${root}/**/*.feature`);
         } else if (typeof syncfeatures === 'string') {
             this.setElementsHash(`${root}/${syncfeatures}`);
         }
+        
+        if (this.settings.enableStepIndexing) {
+            this.buildIndices();
+        }
+    }
+
+    // Построение индексов для быстрого поиска
+    private buildIndices(): void {
+        this.stepsByGherkin.clear();
+        this.stepsByPrefix.clear();
+
+        this.elements.forEach(step => {
+            // Индекс по типу Gherkin
+            const gherkinSteps = this.stepsByGherkin.get(step.gherkin) || [];
+            gherkinSteps.push(step);
+            this.stepsByGherkin.set(step.gherkin, gherkinSteps);
+
+            // Индекс по префиксу (первые 3 символа)
+            const prefix = step.text.substring(0, 3).toLowerCase();
+            const prefixSteps = this.stepsByPrefix.get(prefix) || [];
+            prefixSteps.push(step);
+            this.stepsByPrefix.set(prefix, prefixSteps);
+        });
     }
 
     getGherkinRegEx() {
@@ -212,6 +303,23 @@ export default class StepsHandler {
         return step;
     }
 
+    // Оптимизированные предкомпилированные регулярные выражения для parameter types
+    private static readonly PARAMETER_REPLACEMENTS = new Map([
+        [/{float}/g, '-?\\d*\\.?\\d+'],
+        [/{int}/g, '-?\\d+'],
+        [/{stringInDoubleQuotes}/g, '"[^"]+"'],
+        [/{word}/g, '[^\\s]+'],
+        [/{string}/g, "(\"|')[^\\1]*\\1"],
+        [/{}/g, '.*'],
+        [/#{(.*?)}/g, '.*'] // Ruby interpolation
+    ]);
+
+    private static readonly COMMON_PATTERNS = {
+        optionalText: /\(([a-z]+)\)/g,
+        alternativeText: /([a-zA-Z]+)(?:\/([a-zA-Z]+))+/g,
+        cucumberExpressions: /([^\\]|^){(?![\d,])(.*?)}/g
+    };
+
     specialParameters = [
         //Ruby interpolation (like `#{Something}` ) should be replaced with `.*`
         //https://github.com/alexkrechik/VSCucumberAutoComplete/issues/65
@@ -248,31 +356,64 @@ export default class StepsHandler {
         return `^${step}$`;
     }
 
-    getRegTextForStep(step: string): string {
+    // Оптимизированная обработка parameter types
+    private processParameterTypes(step: string): string {
+        let result = step;
+        
+        // Используем предкомпилированные регулярные выражения
+        StepsHandler.PARAMETER_REPLACEMENTS.forEach((replacement, pattern) => {
+            result = result.replace(pattern, replacement);
+        });
 
-        this.specialParameters.forEach(([parameter, change]) => {
-            step = step.replace(parameter, change)
-        })
+        return result;
+    }
 
-        //Optional Text
-        step = step.replace(/\(([a-z]+)\)/g, '($1)?');
+    // Оптимизированная обработка общих паттернов
+    private processCommonPatterns(step: string): string {
+        let result = step;
 
-        //Alternative text a/b/c === (a|b|c)
-        step = step.replace(
-            /([a-zA-Z]+)(?:\/([a-zA-Z]+))+/g,
+        // Optional Text
+        result = result.replace(StepsHandler.COMMON_PATTERNS.optionalText, '($1)?');
+
+        // Alternative text a/b/c === (a|b|c)
+        result = result.replace(
+            StepsHandler.COMMON_PATTERNS.alternativeText,
             (match) => `(${match.replace(/\//g, '|')})`
         );
 
-        //Handle Cucumber Expressions (like `{Something}`) should be replaced with `.*`
-        //https://github.com/alexkrechik/VSCucumberAutoComplete/issues/99
-        //Cucumber Expressions Custom Parameter Type Documentation
-        //https://docs.cucumber.io/cucumber-expressions/#custom-parameters
-        step = step.replace(/([^\\]|^){(?![\d,])(.*?)}/g, '$1.*');
+        // Handle Cucumber Expressions
+        result = result.replace(StepsHandler.COMMON_PATTERNS.cucumberExpressions, '$1.*');
 
-        //Escape all the regex symbols to avoid errors
-        step = escapeRegExp(step);
+        return result;
+    }
 
-        return step;
+    // Кэшированная версия getRegTextForStep
+    getRegTextForStepCached(step: string): string {
+        if (this.settings.enableRegexCaching && this.processedStepCache.has(step)) {
+            return this.processedStepCache.get(step)!;
+        }
+
+        let result = this.processParameterTypes(step);
+        result = this.processCommonPatterns(result);
+        result = escapeRegExp(result);
+
+        if (this.settings.enableRegexCaching) {
+            this.processedStepCache.set(step, result);
+        }
+        return result;
+    }
+
+    getRegTextForStep(step: string): string {
+        // Используем кэшированную версию если включены оптимизации
+        if (this.settings.enablePerformanceOptimizations) {
+            return this.getRegTextForStepCached(step);
+        }
+        
+        // Оригинальная логика для обратной совместимости
+        let result = this.processParameterTypes(step);
+        result = this.processCommonPatterns(result);
+        result = escapeRegExp(result);
+        return result;
     }
 
     getPartialRegParts(text: string): string[] {
@@ -471,16 +612,11 @@ export default class StepsHandler {
             .map((step) => {
                 const regText = this.settings.pureTextSteps
                     ? this.getRegTextForPureStep(step)
-                    : this.getRegTextForStep(step);
-                const reg = new RegExp(regText);
-                let partialReg;
-                // Use long regular expression in case of error
-                try {
-                    partialReg = new RegExp(this.getPartialRegText(step));
-                } catch (err) {
-                    // Todo - show some warning
-                    partialReg = reg;
-                }
+                    : this.getRegTextForStepCached(step);
+                
+                const reg = this.getRegExpCached(regText);
+                const partialReg = this.getPartialRegExpCached(step);
+                
                 //Todo we should store full value here
                 const text = this.settings.pureTextSteps
                     ? step
@@ -643,26 +779,33 @@ export default class StepsHandler {
     }
 
     populate(root: string, stepsPathes: StepSettings): void {
+        this.clearCaches();
         this.elementsHash = {};
-        this.elements = stepsPathes
-            .reduce(
-                (files, path) =>
-                    files.concat(glob.sync(root + '/' + path, { absolute: true })),
-                new Array<string>()
-            )
-            .reduce(
-                (elements, f) =>
-                    elements.concat(
-                        this.getFileSteps(f).reduce((steps, step) => {
-                            if (!this.elementsHash[step.id]) {
-                                steps.push(step);
-                                this.elementsHash[step.id] = true;
-                            }
-                            return steps;
-                        }, new Array<Step>())
-                    ),
-                new Array<Step>()
-            );
+        
+        // Используем Set для дедупликации файлов
+        const uniqueFiles = new Set<string>();
+        
+        stepsPathes.forEach(path => {
+            const files = glob.sync(root + '/' + path, { absolute: true });
+            files.forEach(file => uniqueFiles.add(file));
+        });
+
+        this.elements = Array.from(uniqueFiles)
+            .reduce((elements, f) => {
+                return elements.concat(
+                    this.getFileSteps(f).reduce((steps, step) => {
+                        if (!this.elementsHash[step.id]) {
+                            steps.push(step);
+                            this.elementsHash[step.id] = true;
+                        }
+                        return steps;
+                    }, new Array<Step>())
+                );
+            }, new Array<Step>());
+
+        if (this.settings.enableStepIndexing) {
+            this.buildIndices();
+        }
     }
 
     getStepByText(text: string, gherkin?: GherkinType) {
@@ -742,23 +885,61 @@ export default class StepsHandler {
         }
     }
 
-    getCompletion(
+    // Оптимизированный метод автокомплита с дебаунсингом
+    getCompletionOptimized(
+        line: string,
+        lineNumber: number,
+        text: string
+    ): Promise<CompletionItem[] | null> {
+        return new Promise((resolve) => {
+            if (this.debounceTimer) {
+                clearTimeout(this.debounceTimer);
+            }
+
+            this.debounceTimer = setTimeout(() => {
+                resolve(this.getCompletionSync(line, lineNumber, text));
+            }, this.settings.debounceDelay || StepsHandler.DEFAULT_DEBOUNCE_DELAY);
+        });
+    }
+
+    // Синхронная версия автокомплита с оптимизациями
+    private getCompletionSync(
         line: string,
         lineNumber: number,
         text: string
     ): CompletionItem[] | null {
-    //Get line part without gherkin part
         const match = this.getGherkinMatch(line, text);
         if (!match) {
             return null;
         }
+
         const [, , gherkinPart, , stepPartBase] = match;
-        //We don't need last word in our step part due to it could be incompleted
         let stepPart = stepPartBase || '';
         stepPart = stepPart.replace(/[^\s]+$/, '');
-        const res = this.elements
-        //Filter via gherkin words comparing if strictGherkinCompletion option provided
-            .filter((step) => {
+
+        // Получаем релевантные steps через индексы (если включено индексирование)
+        let candidateSteps: Step[] = [];
+
+        if (this.settings.enableStepIndexing) {
+            if (this.settings.strictGherkinCompletion) {
+                const strictGherkinPart = this.getStrictGherkinType(
+                    gherkinPart,
+                    lineNumber,
+                    text
+                );
+                candidateSteps = this.stepsByGherkin.get(strictGherkinPart) || [];
+            } else {
+                // Используем индекс по префиксу для ускорения поиска
+                const prefix = stepPart.trim().substring(0, 3).toLowerCase();
+                if (prefix.length >= 3) {
+                    candidateSteps = this.stepsByPrefix.get(prefix) || this.elements;
+                } else {
+                    candidateSteps = this.elements;
+                }
+            }
+        } else {
+            // Оригинальная логика без индексирования
+            candidateSteps = this.elements.filter((step) => {
                 if (this.settings.strictGherkinCompletion) {
                     const strictGherkinPart = this.getStrictGherkinType(
                         gherkinPart,
@@ -769,22 +950,40 @@ export default class StepsHandler {
                 } else {
                     return true;
                 }
-            })
-        //Current string without last word should partially match our regexp
-            .filter((step) => step.partialReg.test(stepPart))
-        //We got all the steps we need so we could make completions from them
-            .map((step) => {
-                return {
-                    label: step.text,
-                    kind: CompletionItemKind.Snippet,
-                    data: step.id,
-                    documentation: step.documentation,
-                    sortText: getSortPrefix(step.count, 5) + '_' + step.text,
-                    insertText: this.getCompletionInsertText(step.text, stepPart),
-                    insertTextFormat: InsertTextFormat.Snippet,
-                };
             });
-        return res.length ? res : null;
+        }
+
+        // Фильтрация и маппинг с ограничением количества результатов
+        const results = candidateSteps
+            .filter((step) => {
+                try {
+                    return step.partialReg.test(stepPart);
+                } catch {
+                    return false;
+                }
+            })
+            .sort((a, b) => b.count - a.count) // Сортировка по частоте использования
+            .slice(0, this.settings.maxCompletionItems || StepsHandler.DEFAULT_MAX_COMPLETION_ITEMS)
+            .map((step) => ({
+                label: step.text,
+                kind: CompletionItemKind.Snippet,
+                data: step.id,
+                documentation: step.documentation,
+                sortText: getSortPrefix(step.count, 5) + '_' + step.text,
+                insertText: this.getCompletionInsertText(step.text, stepPart),
+                insertTextFormat: InsertTextFormat.Snippet,
+            }));
+
+        return results.length ? results : null;
+    }
+
+    getCompletion(
+        line: string,
+        lineNumber: number,
+        text: string
+    ): CompletionItem[] | null {
+        // Используем синхронную версию для обратной совместимости
+        return this.getCompletionSync(line, lineNumber, text);
     }
 
     getCompletionResolve(item: CompletionItem): CompletionItem {

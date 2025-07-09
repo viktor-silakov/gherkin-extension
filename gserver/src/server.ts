@@ -240,7 +240,12 @@ connection.onCompletion(
             return pagesHandler.getCompletion(line, position.position);
         }
         if (shouldHandleSteps(settings) && stepsHandler) {
-            return stepsHandler.getCompletion(line, position.position.line, text);
+            // Используем оптимизированную версию автокомплита для лучшей производительности
+            if (typeof stepsHandler.getCompletionOptimized === 'function') {
+                return await stepsHandler.getCompletionOptimized(line, position.position.line, text);
+            } else {
+                return stepsHandler.getCompletion(line, position.position.line, text);
+            }
         }
     }
 );
