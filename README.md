@@ -1,9 +1,15 @@
 # Cucumber Full Language Support (Enhanced Fork)
 VSCode Cucumber (Gherkin) Language Support + Format + Steps/PageObjects Autocomplete
 
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=viktor-silakov.gherkin-extension)
+
 > **⚠️ This is a fork of the original [VSCucumberAutoComplete](https://github.com/alexkrechik/VSCucumberAutoComplete) project with additional enhancements and bug fixes.**
 > 
-> For detailed information about all enhancements and modifications, see [ENHANCEMENTS.md](./ENHANCEMENTS.md).
+> For detailed information about all enhancements and modifications, see [ENHANCEMENTS.md](./docs/ENHANCEMENTS.md).
+
+## 📦 Installation
+
+Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=viktor-silakov.gherkin-extension) or search for "Gherkin Extension" in VS Code Extensions panel.
 
 ## This extension adds rich language support for the Cucumber (Gherkin) language to VS Code, including:
 * Syntax highlight
@@ -26,7 +32,7 @@ VSCode Cucumber (Gherkin) Language Support + Format + Steps/PageObjects Autocomp
 ![](https://raw.githubusercontent.com/alexkrechik/VSCucumberAutoComplete/master/gclient/img/vscode.gif)
 ## How to use:
 1. Open your app in VS Code
-2. Install `cucumberautocomplete` extension
+2. Install the extension from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=viktor-silakov.gherkin-extension) or search for "Gherkin Extension"
 3. In the opened app root create (if absent) .vscode folder with settings.json file or just run ```mkdir .vscode && touch .vscode/settings.json```
 4. Add all the needed settings to the settings.json file
 5. Reload app to apply all the extension changes
@@ -201,7 +207,46 @@ npm run compile
 
 # Run tests in watch mode during development
 npm test -- --watch
+
+# Build VSIX package (saved to out/ folder)
+npm run build:vsix
+
+# Interactive release (version bump + VSIX build)
+npm run release:interactive
+
+# Automated release scripts
+npm run release:patch    # Patch version bump
+npm run release:minor    # Minor version bump
+npm run release:major    # Major version bump
 ```
+
+#### Building and Release
+The extension uses an enhanced build system that creates VSIX packages in the `out/` folder:
+
+**Interactive Release (Recommended)**
+```bash
+npm run release:interactive
+```
+This will guide you through:
+- Version selection (patch/minor/major/custom)
+- Optional steps (tests, linting, git operations)
+- VSIX package creation
+- Git commit and tag creation
+
+**Quick VSIX Build**
+```bash
+npm run build:vsix
+```
+Creates a VSIX package without version changes.
+
+**Automated Release**
+```bash
+npm run release:patch    # For bug fixes
+npm run release:minor    # For new features
+npm run release:major    # For breaking changes
+```
+
+All VSIX files are saved to the `out/` folder and excluded from git.
 
 #### Documentation Requirements
 - **Every enhancement** must be documented in [ENHANCEMENTS.md](./ENHANCEMENTS.md)

@@ -93,11 +93,20 @@ function main() {
         // Step 6: Create VSIX package
         if (!dryRun) {
             log('📦 Creating VSIX package...', colors.yellow);
-            execCommand('npm run package');
             
-            const vsixFile = `gherkin-extension-${newVersion}.vsix`;
-            if (fs.existsSync(vsixFile)) {
-                log(`✅ VSIX package created: ${vsixFile}`, colors.green);
+            // Ensure out directory exists
+            const outDir = path.join(__dirname, '..', 'out');
+            if (!fs.existsSync(outDir)) {
+                fs.mkdirSync(outDir, { recursive: true });
+            }
+            
+            const vsixFileName = `gherkin-extension-${newVersion}.vsix`;
+            const vsixPath = path.join(outDir, vsixFileName);
+            
+            execCommand(`vsce package --out "${vsixPath}"`);
+            
+            if (fs.existsSync(vsixPath)) {
+                log(`✅ VSIX package created: ${vsixPath}`, colors.green);
             } else {
                 log('❌ VSIX package not found', colors.red);
                 process.exit(1);
@@ -123,7 +132,7 @@ function main() {
         log(`📦 Version: ${newVersion}`, colors.bright);
         
         if (!dryRun) {
-            log(`📁 VSIX file: gherkin-extension-${newVersion}.vsix`, colors.bright);
+            log(`📁 VSIX file: out/gherkin-extension-${newVersion}.vsix`, colors.bright);
         }
         
         if (!skipGit && !dryRun) {

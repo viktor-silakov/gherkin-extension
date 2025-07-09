@@ -4,6 +4,65 @@ This document tracks all enhancements, bug fixes, and modifications made to the 
 
 ## 🚀 Recent Enhancements
 
+### 2025-01-09: Enhanced Build System and Interactive Release
+**Issue**: VSIX packages were being created in the root directory, cluttering the workspace. The release process was manual and error-prone, requiring multiple steps and careful version management.
+
+**Solution**: Implemented an enhanced build system that organizes VSIX packages in a dedicated `out/` folder and created an interactive release tool for streamlined version management and package creation.
+
+**Files Modified**:
+- `scripts/build-vsix.js` - Updated to save VSIX packages to `out/` folder
+- `scripts/release.js` - Updated to save VSIX packages to `out/` folder
+- `scripts/interactive-release.js` - **NEW** Interactive release tool with guided workflow
+- `package.json` - Added `np` dependency and `release:interactive` script
+- `.gitignore` - Ensured `out/` folder is excluded from git
+- `README.md` - Added documentation for new build and release commands
+
+**New Features**:
+- **Organized VSIX Storage**: All VSIX packages now saved to `out/` folder
+- **Interactive Release Tool**: Step-by-step guided release process with:
+  - Version selection (patch/minor/major/custom)
+  - Optional steps (tests, linting, git operations)
+  - Real-time confirmation and summary
+  - Comprehensive error handling
+- **Enhanced Build Scripts**: Improved error handling and user feedback
+- **Better Documentation**: Clear instructions for build and release processes
+
+**New Scripts**:
+```bash
+npm run build:vsix           # Build VSIX package to out/ folder
+npm run release:interactive  # Interactive release with guided workflow
+npm run release:patch        # Automated patch release
+npm run release:minor        # Automated minor release
+npm run release:major        # Automated major release
+```
+
+**Benefits**:
+- **Cleaner Workspace**: VSIX files no longer clutter the root directory
+- **Streamlined Releases**: Interactive tool reduces human error and ensures consistency
+- **Better Organization**: Clear separation between source code and build artifacts
+- **Improved Developer Experience**: Guided workflow with helpful prompts and validation
+- **Flexible Release Options**: Both interactive and automated release workflows available
+
+### 2025-01-09: Added VS Code Marketplace Link
+**Issue**: Users needed an easy way to find and install the extension from the VS Code Marketplace.
+
+**Solution**: Added VS Code Marketplace badge and installation links to README.md for better discoverability and easier installation process.
+
+**Files Modified**:
+- `README.md` - Added marketplace badge, installation section, and updated installation instructions
+
+**Changes Made**:
+- Added VS Code Marketplace badge with link to https://marketplace.visualstudio.com/items?itemName=viktor-silakov.gherkin-extension
+- Created dedicated "Installation" section with marketplace link
+- Updated "How to use" section to reference marketplace installation instead of generic extension name
+- Improved user experience for extension discovery and installation
+
+**Benefits**:
+- Easier extension discovery for new users
+- Direct link to official marketplace listing
+- Clear installation instructions
+- Professional presentation with marketplace badge
+
 ### 2025-01-09: Performance Optimizations for Parameter Types
 **Issue**: Slow autocomplete performance and high memory usage when working with multiple parameter types in step definitions. Complex step definitions like `user {name} with role {role} should have {permission} access to {resource}` caused significant delays (200-500ms) and memory growth during autocomplete operations.
 

@@ -72,27 +72,34 @@ function main() {
         log('🔨 Compiling TypeScript...', colors.yellow);
         execCommand('npm run compile');
 
-        // Step 5: Create VSIX package
-        log('📦 Creating VSIX package...', colors.yellow);
-        execCommand('npm run package');
+        // Step 5: Ensure out directory exists
+        const outDir = path.join(__dirname, '..', 'out');
+        if (!fs.existsSync(outDir)) {
+            fs.mkdirSync(outDir, { recursive: true });
+        }
 
-        // Step 6: Verify package was created
+        // Step 6: Create VSIX package
+        log('📦 Creating VSIX package...', colors.yellow);
         const version = getPackageVersion();
-        const vsixFile = `gherkin-extension-${version}.vsix`;
+        const vsixFileName = `gherkin-extension-${version}.vsix`;
+        const vsixPath = path.join(outDir, vsixFileName);
         
-        if (fs.existsSync(vsixFile)) {
-            const stats = fs.statSync(vsixFile);
+        execCommand(`vsce package --out "${vsixPath}"`);
+
+        // Step 7: Verify package was created
+        if (fs.existsSync(vsixPath)) {
+            const stats = fs.statSync(vsixPath);
             const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
             
             console.log();
             log('🎉 VSIX package created successfully!', colors.green);
-            log(`📁 File: ${vsixFile}`, colors.bright);
+            log(`📁 File: ${vsixPath}`, colors.bright);
             log(`📏 Size: ${fileSizeMB} MB`, colors.bright);
             log(`📦 Version: ${version}`, colors.bright);
             
             console.log();
             log('Next steps:', colors.cyan);
-            log('  • Test locally: code --install-extension ' + vsixFile, colors.cyan);
+            log('  • Test locally: code --install-extension "' + vsixPath + '"', colors.cyan);
             log('  • Publish: npm run publish', colors.cyan);
         } else {
             log('❌ VSIX package not found', colors.red);
