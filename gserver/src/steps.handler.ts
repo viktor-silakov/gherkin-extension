@@ -686,31 +686,10 @@ export default class StepsHandler {
         const clearedLines = definitionFile.split(/\r?\n/g);
         const lineMapping: number[] = [];
         
-        let originalIndex = 0;
-        for (let clearedIndex = 0; clearedIndex < clearedLines.length; clearedIndex++) {
-            // Find the corresponding line in the original file
-            while (originalIndex < originalLines.length) {
-                const clearedLine = clearedLines[clearedIndex].trim();
-                const originalLine = originalLines[originalIndex].trim();
-                
-                // If cleared line is empty, it might be a removed comment line
-                if (clearedLine === '') {
-                    // Find next non-empty original line
-                    while (originalIndex < originalLines.length && originalLines[originalIndex].trim() === '') {
-                        originalIndex++;
-                    }
-                    lineMapping[clearedIndex] = originalIndex;
-                    break;
-                } else if (originalLine.includes(clearedLine) || clearedLine.includes(originalLine)) {
-                    // Lines match
-                    lineMapping[clearedIndex] = originalIndex;
-                    originalIndex++;
-                    break;
-                } else {
-                    // Skip comment lines in original file
-                    originalIndex++;
-                }
-            }
+        // Simple approach: map each cleared line to the same line number in original
+        // This works because strip-comments preserves line numbers with preserveNewlines: true
+        for (let i = 0; i < clearedLines.length; i++) {
+            lineMapping[i] = i;
         }
         
         return clearedLines
@@ -737,6 +716,12 @@ export default class StepsHandler {
                 }
                 if (match) {
                     const [, beforeGherkin, gherkinString, , stepPart] = match;
+                    
+                    // Skip empty or very short step definitions (likely false positives)
+                    if (!stepPart || stepPart.trim().length < 3) {
+                        return steps;
+                    }
+                    
                     const gherkin = getGherkinTypeLower(gherkinString);
                     
                     // Use original line number for position and comment lookup

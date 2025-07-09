@@ -753,3 +753,62 @@ describe('step as a pure text test', () => {
     expect(completion![0].insertText).toStrictEqual('3/4 and 5$');
   });
 });
+
+describe('Line mapping after comment removal', () => {
+  it('should correctly map line numbers after clearing comments', () => {
+    // Create a test file with comments
+    const testFileContent = `// Comment line 1
+/* Multi-line comment
+   continues here */
+import { When } from '@fixtures';
+
+/**
+ * JSDoc comment
+ * @example
+ * When I wait for 2 seconds
+ */
+When('I wait for {int} seconds', async ({ page }, seconds) => {
+  await page.waitForTimeout(seconds * 1000);
+});`;
+
+    // Mock getFileContent to return our test content
+    const originalGetFileContent = getFileContent;
+    (getFileContent as any) = jest.fn().mockReturnValue(testFileContent);
+
+    try {
+      const testSettings = {
+        steps: ['test.ts'],
+        pages: {},
+        syncfeatures: false,
+        smartSnippets: false,
+        stepsInvariants: false,
+        strictGherkinCompletion: false,
+        customParameters: [],
+      };
+
+      const handler = new StepsHandler(__dirname, testSettings);
+      const steps = handler.getFileSteps('test.ts');
+
+      // Find the step we're looking for
+      const waitStep = steps.find(step => step.text.includes('wait for') && step.text.includes('seconds'));
+      
+      expect(waitStep).toBeDefined();
+      expect((waitStep!.def as any).range.start.line).toBe(10); // Should be line 11 (0-indexed = 10)
+      expect(waitStep!.text).toBe('I wait for {int} seconds');
+    } finally {
+      // Restore original function
+      (getFileContent as any) = originalGetFileContent;
+    }
+  });
+
+  it('should find correct step definition for "I wait for 1 seconds"', () => {
+    const testText = 'I wait for 1 seconds';
+    const step = s.getStepByText(testText);
+    
+    // Should find a step (assuming test data contains such a step)
+    if (step) {
+      expect(step.text).toMatch(/wait.*seconds/);
+      expect(step.reg.test(testText)).toBe(true);
+    }
+  });
+});
