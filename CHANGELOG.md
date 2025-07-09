@@ -1,3 +1,18 @@
+## 0.0.6
+* **BUGFIX**: Fixed false positive step matches in "Go to Definition"
+  - Added validation to skip empty or very short step definitions (< 3 characters)
+  - Prevents false matches from comments and documentation
+  - Improved accuracy of step definition detection
+* **FEATURE**: Added icon for feature files
+  - Added cucumber icon for better file identification in VSCode
+
+## 0.0.3
+* **BUGFIX**: Fixed incorrect line mapping in "Go to Definition" functionality
+  - Fixed issue where step definitions were redirected to wrong files and line numbers
+  - Improved line number mapping algorithm after comment removal
+  - Added regression tests to prevent future issues
+  - Now correctly navigates to step definitions in files with extensive comments
+
 ## 3.0.5
 * Used absolute pathes for the glob sync to fix "Go To Definition" problem on some Window PCs
 * Fixed regression issue with non-English languages formatting

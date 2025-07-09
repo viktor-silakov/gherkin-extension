@@ -1,6 +1,6 @@
 {
   "name": "gherkin-extension",
-  "version": "0.0.2",
+  "version": "0.0.6",
   "publisher": "viktor-silakov",
   "author": " Viktor Silakov, Alexander Krechik",
   "license": "MIT",
@@ -44,8 +44,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./img/gwt.png",
-          "dark": "./img/gwt.png"
+          "light": "./img/cucumber.png",
+          "dark": "./img/cucumber.png"
         }
       }
     ],
@@ -189,6 +189,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@types/jest": "^29.5.12"
+    "@types/jest": "^29.5.12",
+    "strip-comments": "^2.0.1"
   }
 }
