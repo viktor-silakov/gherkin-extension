@@ -64,3 +64,13 @@ this.Then(/^I should have {float} dollars$/, function (float1, next) {
 this.When(/^I do [a-z]+ and \w* thing$/, function (next) {
     next;
 });
+
+//Test step for quote completion issue
+this.When(/^I activate "([^"]*)" feature$/, function (feature, next) {
+    next;
+});
+
+//Test step for component assertion pattern
+this.Then(/^the "([^"]*)" (.+)$/, function (component, assert, next) {
+    next;
+});

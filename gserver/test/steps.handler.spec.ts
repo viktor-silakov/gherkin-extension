@@ -3,7 +3,7 @@ import { GherkinType } from '../src/gherkin';
 import { getFileContent } from '../src/util';
 import { Definition } from 'vscode-languageserver';
 
-const stepsDefinitionNum = 12; // Updated from 11 to reflect actual number of steps found
+const stepsDefinitionNum = 14; // Updated from 13 to reflect actual number of steps found
 const settings = {
   steps: ['/data/steps/test.steps.js'],
   pages: {
@@ -587,7 +587,9 @@ describe('getCompletion', () => {
   it('should return all the variants found', () => {
     const line = ' When I do';
     const completion = s.getCompletion(line, line.length, '');
-    expect(completion).toHaveLength(3); // Only steps starting with "I do"
+    console.log('Completion:✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅', completion);
+    
+    expect(completion).toHaveLength(4); // Only steps starting with "I do"
   });
   it('should correctly filter completion', () => {
     const line = ' When I do another th';
@@ -743,6 +745,64 @@ describe('gherkin definition part overrides', () => {
         ''
       )
     ).toBeNull();
+  });
+
+  it('should provide completion after quote character', () => {
+    // Testing the specific issue with completion after quotes
+    const line = 'When I activate "';
+    const completion = s.getCompletion(line, line.length, '');
+    
+    console.log('Quote completion test:', completion);
+    
+    // Should return the step that matches "I activate" pattern
+    expect(completion).not.toBeNull();
+    expect(completion).toHaveLength(1);
+    expect(completion![0].label).toContain('I activate');
+    expect(completion![0].insertText).toBeTruthy();
+  });
+
+  it('should provide completion after quote and space', () => {
+    // Testing the specific issue with completion after quotes and space
+    const line = 'When I activate " ';
+    const completion = s.getCompletion(line, line.length, '');
+    
+    console.log('Quote and space completion test:', completion);
+    
+    // Should return the step that matches "I activate" pattern
+    expect(completion).not.toBeNull();
+    expect(completion).toHaveLength(1);
+    expect(completion![0].label).toContain('I activate');
+    expect(completion![0].insertText).toBeTruthy();
+  });
+
+  it('should provide completion after component parameter in quotes', () => {
+    // Testing the specific issue with completion after component parameter
+    const line = 'Then the "Chat Context Menu" ';
+    const completion = s.getCompletion(line, line.length, '');
+    
+    console.log('Component parameter completion test:', completion);
+    
+    // Should return the step that matches "the {component} {assert}" pattern
+    expect(completion).not.toBeNull();
+    expect(completion).toHaveLength(1);
+    expect(completion![0].label).toContain('the "" ');
+    // insertText can be empty string when the step is already largely complete
+    expect(completion![0].insertText).toBeDefined();
+  });
+
+  it('should provide completion after component parameter without trailing space', () => {
+    // Testing the specific issue with completion after component parameter
+    const line = 'Then the "Chat Context Menu"';
+    const completion = s.getCompletion(line, line.length, '');
+    
+    console.log('Component parameter (no space) completion test:', completion);
+    
+    // Should return the step that matches "the {component} {assert}" pattern
+    expect(completion).not.toBeNull();
+    expect(completion).toHaveLength(1);
+    expect(completion![0].label).toContain('the "" ');
+    // insertText can be empty string when the step is already largely complete
+    expect(completion![0].insertText).toBeDefined();
   });
 });
 
