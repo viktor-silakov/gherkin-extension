@@ -2,14 +2,15 @@ import { getOSPath, getFileContent, clearComments, getMD5Id } from './util';
 
 import {
     Definition,
-    CompletionItem,
     Position,
     Location,
     Range,
     Diagnostic,
     DiagnosticSeverity,
-    CompletionItemKind,
     TextEdit,
+    CompletionItem,
+    CompletionItemKind,
+    Command,
 } from 'vscode-languageserver';
 
 import * as glob from 'glob';
@@ -185,77 +186,83 @@ export default class PagesHandler {
         }
     }
 
-    getPageCompletion(
-        line: string,
-        position: Position,
-        page: Page
-    ): CompletionItem {
-        const search = line.search(/"([^"]*)"$/);
-        if (search > 0 && position.character === line.length - 1) {
-            const start = Position.create(position.line, search);
-            const end = Position.create(position.line, line.length);
-            const range = Range.create(start, end);
-            return {
-                label: page.text,
-                kind: CompletionItemKind.Function,
-                data: page.id,
-                command: {
-                    title: 'cursorMove',
-                    command: 'cursorMove',
-                    arguments: [
-                        { to: 'right', by: 'wrappedLine', select: false, value: 1 },
-                    ],
-                },
-                insertText: page.text + '".',
-            };
-        } else {
-            return {
-                label: page.text,
-                kind: CompletionItemKind.Function,
-                data: page.id,
-            };
-        }
-    }
-
-    getPageObjectCompletion(
-        line: string,
-        position: Position,
-        pageObject: PageObject
-    ): CompletionItem {
-        const insertText = line.length === position.character ? '" ' : '';
-        return {
-            label: pageObject.text,
-            kind: CompletionItemKind.Function,
-            data: pageObject.id,
-            insertText: pageObject.text + insertText,
-            documentation: pageObject.desc,
-            detail: pageObject.desc,
-        };
-    }
-
     getCompletion(line: string, position: Position): CompletionItem[] | null {
-        const fPosition = this.getFeaturePosition(line, position.character);
-        const page = fPosition?.page;
-        const object = fPosition?.object;
-        if (object !== undefined && page !== undefined) {
-            const pageElement = this.getPageElement(page);
-            if (pageElement) {
-                return pageElement.objects.map(
-                    this.getPageObjectCompletion.bind(null, line, position)
-                );
-            } else {
-                return null;
-            }
-        } else if (page !== undefined) {
-            return this.elements.map(
-                this.getPageCompletion.bind(null, line, position)
-            );
-        } else {
+        const featurePosition = this.getFeaturePosition(line, position.character);
+        if (!featurePosition) {
             return null;
         }
+
+        const completionItems: CompletionItem[] = [];
+
+        if (featurePosition.object !== undefined) {
+            // We're completing a page object
+            const page = this.getPageElement(featurePosition.page);
+            if (page) {
+                const enteredText = featurePosition.object || '';
+                const matchingObjects = page.objects.filter(obj => 
+                    obj.text.startsWith(enteredText)
+                );
+                
+                for (const obj of matchingObjects) {
+                    const insertText = obj.text.substring(enteredText.length);
+                    const item: CompletionItem = {
+                        label: obj.text,
+                        kind: CompletionItemKind.Property,
+                        documentation: obj.desc,
+                        data: obj.id
+                    };
+                    
+                    // Handle insertText based on line ending
+                    if (line.endsWith('"."')) {
+                        // Standard case like "page"."" 
+                        item.insertText = insertText;
+                    } else if (line.endsWith('."')) {
+                        // Smart case like "page"."a" needs to add '" '
+                        item.insertText = insertText + '" ';
+                    } else {
+                        item.insertText = insertText;
+                    }
+                    
+                    completionItems.push(item);
+                }
+            }
+        } else {
+            // We're completing a page
+            const enteredText = featurePosition.page || '';
+            const matchingPages = this.elements.filter(page => 
+                page.text.startsWith(enteredText)
+            );
+            
+            for (const page of matchingPages) {
+                const insertText = page.text.substring(enteredText.length);
+                const item: CompletionItem = {
+                    label: page.text,
+                    kind: CompletionItemKind.Module,
+                    documentation: page.desc,
+                    data: page.id
+                };
+                
+                // Handle different cases
+                if (line.endsWith('"."')) {
+                    // Standard case like "".""
+                    // No insertText property
+                } else if (line.endsWith('"')) {
+                    // Smart case like ""
+                    item.insertText = insertText + '".';
+                    item.command = {
+                        title: 'Suggest page objects',
+                        command: 'editor.action.triggerSuggest'
+                    };
+                } else {
+                    item.insertText = insertText;
+                }
+                
+                completionItems.push(item);
+            }
+        }
+
+        return completionItems.length > 0 ? completionItems : null;
     }
 
-    getCompletionResolve(item: CompletionItem): CompletionItem {
-        return item;
-    }
+
 }

@@ -1,5 +1,5 @@
 # Cucumber Full Language Support (Enhanced Fork)
-VSCode Cucumber (Gherkin) Language Support + Format + Steps/PageObjects Autocomplete
+VSCode Cucumber (Gherkin) Language Support + Format + Steps/PageObjects Validation
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=viktor-silakov.gherkin-extension)
 
@@ -15,28 +15,59 @@ Install directly from the [VS Code Marketplace](https://marketplace.visualstudio
 * Syntax highlight
 * Basic Snippets support
 * Auto-parsing of feature steps from paths, provided in settings.json
-* Autocompletion of steps
 * Ontype validation for all the steps
 * Definitions support for all the steps parts
 * Document format support, including tables formatting
 * Supporting of many spoken languages
 * Gherkin page objects native support
 * Multiple programming languages, JS, TS, Ruby, Kotlin etc.
+* **🆕 Automatic Step Definition Generation** - Generate step definitions for undefined steps with Quick Fix
+* **🆕 Enhanced Autocompletion System** - Intelligent step suggestions with context-aware filtering
+* **🆕 Parameter Types to Simple Placeholders** - Convert `{string}` to `""` and `{int}` to `?` in autocompletion
 
-## Important extension goals are improving of steps suggestions list and minimization of user edits after step inserting:
-* Sort steps suggestions by their using count
-* Option to filter steps completions depending on words used for their defining
-* Option to automatically change all the steps parts, that require some user action, by snippets
-* Option to show several different completion variants for steps with 'or' RegEx parts (like `(a|b)`)
+## Important extension goals are improving of steps validation and navigation:
+* Accurate step validation based on actual step definitions
+* Go to definition support for all steps
+* Quick fixes for undefined steps with automatic step generation
 
 ![](https://raw.githubusercontent.com/alexkrechik/VSCucumberAutoComplete/master/gclient/img/vscode.gif)
+
+## 🆕 Step Definition Generation
+
+Generate step definitions for undefined steps automatically:
+
+1. **Via Quick Fix**: Click the 💡 lightbulb on undefined steps (red underline) or press `Ctrl+.`
+2. **Via Command Palette**: Press `Ctrl+Shift+P` and search for "Generate Step Definition"
+3. **Select target file**: Choose which step definition file to add the generated code to
+4. **Review & customize**: The generated step definition will be added with modern parameter types
+
+**Features**:
+- **Modern Parameter Types**: Uses `{string}`, `{int}`, `{float}` instead of complex regex patterns
+- **Playwright-Ready**: Generated steps include `{page}` parameter for Playwright compatibility
+- **Auto Parameter Generation**: Automatically generates `str1`, `int1`, `float1`, etc. based on parameter type
+- **Custom Templates**: Define your own step templates with `{gherkinType}`, `{stepPattern}`, and `{parameterList}` placeholders
+- **Multi-language Support**: JavaScript, TypeScript, Ruby, Java, Python, and Kotlin
+
+**Example**:
+```gherkin
+When I activate2 "feature" for 5 second and 3 times
+```
+Generated TypeScript:
+```typescript
+When('I activate2 {string} for {int} second and {int} times', async ({page}, str1, int1, int2) => {
+    // TODO: implement step
+    throw new Error('Step not implemented');
+});
+```
+
+📖 **[Full Documentation](./docs/STEP_GENERATION.md)**
+
 ## How to use:
 1. Open your app in VS Code
 2. Install the extension from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=viktor-silakov.gherkin-extension) or search for "Gherkin Extension"
 3. In the opened app root create (if absent) .vscode folder with settings.json file or just run ```mkdir .vscode && touch .vscode/settings.json```
 4. Add all the needed settings to the settings.json file
 5. Reload app to apply all the extension changes
-6. To get autocomplete working, `strings` var of `editor.quickSuggestions` setting should be set to true (because by default `string` suggestions will not appear)
 
 ## Settings:
 
@@ -46,8 +77,7 @@ Install directly from the [VS Code Marketplace](https://marketplace.visualstudio
     "cucumberautocomplete.steps": [
         "test/features/step_definitions/*.js",
         "node_modules/qa-lib/src/step_definitions/*.js"
-    ],
-    "cucumberautocomplete.strictGherkinCompletion": true
+    ]
 }
 ```
 
@@ -60,17 +90,12 @@ All the paths are relative to the app root.
 **`cucumberautocomplete.syncfeatures`** - Will get steps using count from the glob-style path.
 Same with the `steps` setting - this path should be as strict as possible.
 
-**`cucumberautocomplete.strictGherkinCompletion`** - Strict comparing of declaration function and gherkin word.
-For ex. if step definition is `When(/I do something/)` - in case of `strictGherkinCompletion` is `true` - after typing `Given I` this step will not be shown in the suggestion list.
-In case of some non-gherkin steps definition usage (ex. `new Step('I do something')`) `strictGherkinCompletion` should be set to `false` - no steps suggestions will be shown otherwise.
+
 
 **`cucumberautocomplete.strictGherkinValidation`** - Compare step body and gherkin word during steps validation.
-Sometimes, it's useful to suggest only steps, that strictly equals by gherkin word, but show no error in case if gherkin word is using inproperly, so this option was separated from the `strictGherkinCompletion`.
+When enabled, only steps that strictly match the gherkin word will be considered valid.
 
-**`cucumberautocomplete.smartSnippets`** - Extension will try to change all the steps parts, that requires some user input (ex. .*, ([a-z]+), \\w{1,3}) to snippets.
-This option could speed up new steps adding up to several times. Try it ;)
 
-**`cucumberautocomplete.stepsInvariants`** - Show all the 'or' steps parts as separate suggestions (ex. show `I use a` and `I use b` steps suggestions for the `Given(/I use (a|b)/)` step. It also could help to speed up the new steps adding.
 
 **`cucumberautocomplete.customParameters`** - Change some steps RegEx parts depending on array of 'parameter' - 'value' key pairs. Parameter could be string or RegEx object.
 This setting will be applied before the steps getting.
@@ -140,6 +165,15 @@ By default, all the `' ' "` symbols will be used do define start and the end of 
 **`cucumberautocomplete.pureTextSteps`** - Some frameworks using gherkin steps as a text with just support for the cucumber expression instead of RegExp. This differs from the default extension behaviour, example:
 `When('I give 5$ and * items')` step would be handled as `/I give 5$ and * items/` RegExp without this option enabled and as `/^I give 5\$ and \* items$/` RegExp with it (`^` and `$` symbols were added to the reg ex and also all the special regex symbols were handled as regular text symbols).
 
+**`cucumberautocomplete.stepTemplate`** - Custom step template for generated step definitions. Use `{gherkinType}`, `{stepPattern}`, and `{parameterList}` placeholders. 
+This template has priority over built-in language-specific templates. Empty by default (uses built-in templates).
+Example:
+```json
+{
+  "cucumberautocomplete.stepTemplate": "{gherkinType}('{stepPattern}', async ({page}{parameterList}) => {\n    // Custom implementation\n    throw new Error('Not implemented');\n});"
+}
+```
+
 ### Using all the setting available example:
 ```javascript
 {
@@ -167,6 +201,7 @@ By default, all the `' ' "` symbols will be used do define start and the end of 
         "pathes": "test/features/page_objects/pathes.storage.js",
         "main": "test/features/support/page_objects/main.page.js"
     },
+    "cucumberautocomplete.stepTemplate": "{gherkinType}('{stepPattern}', async () => {\n    // TODO: implement step\n    throw new Error('Step not implemented');\n});",
     "cucumberautocomplete.skipDocStringsFormat": true,
     "cucumberautocomplete.formatConfOverride": {
         "And": 3,

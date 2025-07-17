@@ -142,7 +142,8 @@ For projects with less than 100 step definitions:
   "cucumberautocomplete.maxCompletionItems": 50,
   "cucumberautocomplete.debounceDelay": 50,
   "cucumberautocomplete.enableRegexCaching": true,
-  "cucumberautocomplete.enableStepIndexing": true
+  "cucumberautocomplete.enableStepIndexing": true,
+  "cucumberautocomplete.enableWordBasedIndexing": true
 }
 ```
 
@@ -345,8 +346,13 @@ You can monitor performance in VS Code Developer Tools:
    { "cucumberautocomplete.enableStepIndexing": true }
    ```
 
-2. Check step definition patterns
-3. Verify file paths in configuration
+2. Enable word-based indexing for better accuracy:
+   ```json
+   { "cucumberautocomplete.enableWordBasedIndexing": true }
+   ```
+
+3. Check step definition patterns
+4. Verify file paths in configuration
 
 ### Compatibility Issues
 
@@ -403,6 +409,19 @@ If you want to customize settings:
 2. **Use appropriate parameter types** ({int}, {string}, etc.)
 3. **Avoid deeply nested parameter structures**
 4. **Monitor autocomplete performance** regularly
+
+### Word-Based Indexing
+
+The new **enableWordBasedIndexing** setting provides improved autocomplete accuracy by:
+
+1. **Indexing by words** instead of character prefixes
+2. **Better matching** for natural language step definitions
+3. **Resolving the "third word" issue** where autocomplete appeared only after multiple words
+4. **Smarter parameter handling** by normalizing {string}, {int}, etc.
+
+**When to use**:
+- Enable (default): For most projects, provides better autocomplete experience
+- Disable: For projects with very short step definitions or performance-critical environments
 
 ### Configuration Management
 

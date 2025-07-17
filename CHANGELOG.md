@@ -1,3 +1,13 @@
+## 0.0.8
+* **FEATURE**: Added Automatic Step Definition Generation
+  - Generate step definitions for undefined steps using Quick Fix (💡 lightbulb)
+  - Support for JavaScript, TypeScript, Ruby, Java, Python, and Kotlin
+  - Smart regex generation for quoted strings and numbers
+  - File selection dialog to choose target step definition file
+  - Integrates with existing LSP CodeActions for seamless UX
+  - Command palette support for step generation
+  - Comprehensive test coverage and documentation
+
 ## 0.0.6
 * **BUGFIX**: Fixed false positive step matches in "Go to Definition"
   - Added validation to skip empty or very short step definitions (< 3 characters)

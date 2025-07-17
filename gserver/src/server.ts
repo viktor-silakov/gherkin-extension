@@ -7,7 +7,6 @@ import {
     InitializeResult,
     Diagnostic,
     TextDocumentPositionParams,
-    CompletionItem,
     Range,
     Position,
     DocumentFormattingParams,
@@ -21,6 +20,12 @@ import {
     TextDocumentSyncKind,
     DocumentDiagnosticReportKind,
     DocumentDiagnosticReport,
+    CodeActionParams,
+    CodeAction,
+    CodeActionKind,
+    Command,
+    CompletionParams,
+    CompletionItem,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -66,10 +71,6 @@ connection.onInitialize((params: InitializeParams) => {
         capabilities: {
             // Full text sync mode
             textDocumentSync: TextDocumentSyncKind.Full,
-            //Completion will be triggered after every character pressing
-            completionProvider: {
-                resolveProvider: true,
-            },
             diagnosticProvider: {
                 interFileDependencies: false,
                 workspaceDiagnostics: false
@@ -80,6 +81,13 @@ connection.onInitialize((params: InitializeParams) => {
             documentOnTypeFormattingProvider: {
                 firstTriggerCharacter: ' ',
                 moreTriggerCharacter: ['@', '#', ':'],
+            },
+            codeActionProvider: {
+                codeActionKinds: [CodeActionKind.QuickFix]
+            },
+            completionProvider: {
+                resolveProvider: false,
+                triggerCharacters: [' ', '"', "'"]
             },
         },
     };
@@ -125,17 +133,7 @@ function shouldHandlePages(settings: Settings) {
     return p && Object.keys(p).length ? true : false;
 }
 
-function pagesPosition(line: string, char: number, settings: Settings) {
-    if (
-        shouldHandlePages(settings) &&
-    pagesHandler &&
-    pagesHandler.getFeaturePosition(line, char)
-    ) {
-        return true;
-    } else {
-        return false;
-    }
-}
+
 
 async function revalidateAllDocuments() {
     connection.languages.diagnostics.refresh();
@@ -229,36 +227,9 @@ documents.onDidOpen(async () => {
     initStepsAndPagesSetup(settings);
 });
 
-connection.onCompletion(
-    async (position: TextDocumentPositionParams) => {
-        const settings = await getSettings();
-        const textDocument = documents.get(position.textDocument.uri);
-        const text = textDocument?.getText() || '';
-        const line = text.split(/\r?\n/g)[position.position.line];
-        const char = position.position.character;
-        if (pagesPosition(line, char, settings) && pagesHandler) {
-            return pagesHandler.getCompletion(line, position.position);
-        }
-        if (shouldHandleSteps(settings) && stepsHandler) {
-            // Используем оптимизированную версию автокомплита для лучшей производительности
-            if (typeof stepsHandler.getCompletionOptimized === 'function') {
-                return await stepsHandler.getCompletionOptimized(line, position.position.line, text);
-            } else {
-                return stepsHandler.getCompletion(line, position.position.line, text);
-            }
-        }
-    }
-);
 
-connection.onCompletionResolve((item: CompletionItem) => {
-    if (~item.data.indexOf('step')) {
-        return stepsHandler.getCompletionResolve(item);
-    }
-    if (~item.data.indexOf('page')) {
-        return pagesHandler.getCompletionResolve(item);
-    }
-    return item;
-});
+
+
 
 function validate(text: string, settings: Settings) {
     return text.split(/\r?\n/g).reduce((res, line, i) => {
@@ -305,13 +276,93 @@ connection.onDefinition(async (position: TextDocumentPositionParams) => {
     const char = position.position.character;
     const pos = position.position;
     const { uri } = position.textDocument;
-    if (pagesPosition(line, char, settings) && pagesHandler) {
+    if (shouldHandlePages(settings) && pagesHandler && pagesHandler.getFeaturePosition(line, char)) {
         return pagesHandler.getDefinition(line, char);
     }
     if (shouldHandleSteps(settings) && stepsHandler) {
         return stepsHandler.getDefinition(line, text);
     }
     return Location.create(uri, Range.create(pos, pos));
+});
+
+connection.onCompletion(async (params: CompletionParams) => {
+    const settings = await getSettings();
+    const textDocument = documents.get(params.textDocument.uri);
+    
+    if (!textDocument || !shouldHandleSteps(settings) || !stepsHandler) {
+        return [];
+    }
+    
+    const text = textDocument.getText();
+    const line = text.split(/\r?\n/g)[params.position.line];
+    const character = params.position.character;
+    
+    return stepsHandler.getCompletionItems(line, character, text);
+});
+
+connection.onCodeAction(async (params: CodeActionParams) => {
+    const settings = await getSettings();
+    const { textDocument, range, context } = params;
+    const document = documents.get(textDocument.uri);
+    
+    if (!document || !shouldHandleSteps(settings) || !stepsHandler) {
+        return [];
+    }
+
+    const codeActions: CodeAction[] = [];
+    
+    // Look for diagnostics about undefined steps
+    const diagnostics = context.diagnostics.filter(
+        d => d.source === 'cucumberautocomplete' && 
+             d.message.includes('Was unable to find step for')
+    );
+
+    for (const diagnostic of diagnostics) {
+        const text = document.getText();
+        const lines = text.split(/\r?\n/g);
+        const line = lines[diagnostic.range.start.line];
+        
+        const match = stepsHandler.getGherkinMatch(line, text);
+        if (match) {
+            const stepText = match[4];
+            const gherkinType = match[2];
+            
+            // Create code action for generating step definition
+            const codeAction: CodeAction = {
+                title: `Generate step definition for "${stepText}"`,
+                kind: CodeActionKind.QuickFix,
+                diagnostics: [diagnostic],
+                command: {
+                    title: 'Generate Step Definition',
+                    command: 'cucumberautocomplete.generateStepDefinition',
+                    arguments: [textDocument.uri, stepText, gherkinType]
+                }
+            };
+            
+            codeActions.push(codeAction);
+        }
+    }
+
+    return codeActions;
+});
+
+// Custom request handlers for step definition generation
+connection.onRequest('cucumberautocomplete/getStepDefinitionFiles', async () => {
+    const settings = await getSettings();
+    if (!shouldHandleSteps(settings) || !stepsHandler) {
+        return [];
+    }
+    
+    return stepsHandler.getStepDefinitionFiles();
+});
+
+connection.onRequest('cucumberautocomplete/generateStepDefinition', async (params: {stepText: string, gherkinType: string}) => {
+    const settings = await getSettings();
+    if (!shouldHandleSteps(settings) || !stepsHandler) {
+        return '';
+    }
+    
+    return stepsHandler.generateStepDefinition(params.stepText, params.gherkinType);
 });
 
 function getIndent(options: FormattingOptions) {

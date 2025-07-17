@@ -3,14 +3,13 @@ import * as commentParser from 'doctrine';
 
 import {
     Definition,
-    CompletionItem,
     Diagnostic,
     DiagnosticSeverity,
     Position,
     Location,
     Range,
+    CompletionItem,
     CompletionItemKind,
-    InsertTextFormat,
 } from 'vscode-languageserver';
 
 import {
@@ -62,17 +61,14 @@ export default class StepsHandler {
 
     settings: Settings;
 
+    private workspaceRoot: string;
+
     // Кэши для оптимизации производительности
     private regexCache = new Map<string, RegExp>();
     private partialRegexCache = new Map<string, RegExp>();
     private processedStepCache = new Map<string, string>();
-    private stepsByGherkin = new Map<GherkinType, Step[]>();
-    private stepsByPrefix = new Map<string, Step[]>();
+    
 
-    // Дебаунсинг для автокомплита
-    private debounceTimer: NodeJS.Timeout | null = null;
-    private static readonly DEFAULT_DEBOUNCE_DELAY = 100; // ms
-    private static readonly DEFAULT_MAX_COMPLETION_ITEMS = 50;
 
     // Кэшированная версия создания RegExp
     private getRegExpCached(regText: string): RegExp {
@@ -116,21 +112,19 @@ export default class StepsHandler {
         this.regexCache.clear();
         this.partialRegexCache.clear();
         this.processedStepCache.clear();
-        this.stepsByGherkin.clear();
-        this.stepsByPrefix.clear();
     }
 
+
+
     constructor(root: string, settings: Settings) {
+        this.workspaceRoot = root;
         const { syncfeatures, steps } = settings;
         this.settings = settings;
         
         // Применяем настройки оптимизации по умолчанию
         if (this.settings.enablePerformanceOptimizations !== false) {
             this.settings.enablePerformanceOptimizations = true;
-            this.settings.maxCompletionItems = this.settings.maxCompletionItems || StepsHandler.DEFAULT_MAX_COMPLETION_ITEMS;
-            this.settings.debounceDelay = this.settings.debounceDelay || StepsHandler.DEFAULT_DEBOUNCE_DELAY;
             this.settings.enableRegexCaching = this.settings.enableRegexCaching !== false;
-            this.settings.enableStepIndexing = this.settings.enableStepIndexing !== false;
         }
         
         this.populate(root, steps);
@@ -139,30 +133,11 @@ export default class StepsHandler {
         } else if (typeof syncfeatures === 'string') {
             this.setElementsHash(`${root}/${syncfeatures}`);
         }
-        
-        if (this.settings.enableStepIndexing) {
-            this.buildIndices();
-        }
     }
 
-    // Построение индексов для быстрого поиска
-    private buildIndices(): void {
-        this.stepsByGherkin.clear();
-        this.stepsByPrefix.clear();
 
-        this.elements.forEach(step => {
-            // Индекс по типу Gherkin
-            const gherkinSteps = this.stepsByGherkin.get(step.gherkin) || [];
-            gherkinSteps.push(step);
-            this.stepsByGherkin.set(step.gherkin, gherkinSteps);
 
-            // Индекс по префиксу (первые 3 символа)
-            const prefix = step.text.substring(0, 3).toLowerCase();
-            const prefixSteps = this.stepsByPrefix.get(prefix) || [];
-            prefixSteps.push(step);
-            this.stepsByPrefix.set(prefix, prefixSteps);
-        });
-    }
+
 
     getGherkinRegEx() {
         return new RegExp(`^(\\s*)(${allGherkinWords})(\\s+)(.*)`);
@@ -509,60 +484,7 @@ export default class StepsHandler {
         }
     }
 
-    getCompletionInsertText(step: string, stepPart: string): string {
-    // Return only part we need for our step
-        let res = step;
-        const strArray = this.getPartialRegParts(res);
-        const currArray = new Array<string>();
-        const { length } = strArray;
-        for (let i = 0; i < length; i++) {
-            currArray.push(strArray.shift()!);
-            try {
-                const r = new RegExp('^' + escapeRegExp(currArray.join(' ')));
-                if (!r.test(stepPart)) {
-                    res = new Array<string>()
-                        .concat(currArray.slice(-1), strArray)
-                        .join(' ');
-                    break;
-                }
-            } catch (err) {
-                //TODO - show some warning
-            }
-        }
 
-        if (this.settings.smartSnippets) {
-            /*
-                Now we should change all the 'user input' items to some snippets
-                Create our regexp for this:
-                1) \(? - we be started from opening brace
-                2) \\.|\[\[^\]]\] - [a-z] or \w or .
-                3) \*|\+|\{[^\}]+\} - * or + or {1, 2}
-                4) \)? - could be finished with opening brace
-            */
-            const match = res.match(
-                /((?:\()?(?:\\.|\.|\[[^\]]+\])(?:\*|\+|\{[^}]+\})(?:\)?))/g
-            );
-            if (match) {
-                for (let i = 0; i < match.length; i++) {
-                    const num = i + 1;
-                    res = res.replace(match[i], () => '${' + num + ':}');
-                }
-            }
-        } else {
-            //We can replace some outputs, ex. strings in brackets to make insert strings more neat
-            res = res.replace(/"\[\^"\]\+"/g, '""');
-        }
-
-        if (this.settings.pureTextSteps) {
-            // Replace all the escape chars for now
-            res = res.replace(/\\/g, '');
-            // Also remove start and end of the string - we don't need them in the completion
-            res = res.replace(/^\^/, '');
-            res = res.replace(/\$$/, '');
-        }
-
-        return res;
-    }
 
     getDocumentation(stepRawComment: string) {
         const stepParsedComment = commentParser.parse(stepRawComment.trim(), {
@@ -787,10 +709,6 @@ export default class StepsHandler {
                     }, new Array<Step>())
                 );
             }, new Array<Step>());
-
-        if (this.settings.enableStepIndexing) {
-            this.buildIndices();
-        }
     }
 
     getStepByText(text: string, gherkin?: GherkinType) {
@@ -870,109 +788,533 @@ export default class StepsHandler {
         }
     }
 
-    // Оптимизированный метод автокомплита с дебаунсингом
-    getCompletionOptimized(
-        line: string,
-        lineNumber: number,
-        text: string
-    ): Promise<CompletionItem[] | null> {
-        return new Promise((resolve) => {
-            if (this.debounceTimer) {
-                clearTimeout(this.debounceTimer);
+
+
+    /**
+     * Detect programming language from step definition files
+     */
+    private detectLanguage(): string {
+        const { steps } = this.settings;
+        for (const stepPattern of steps) {
+            if (stepPattern.includes('*.ts')) return 'typescript';
+            if (stepPattern.includes('*.js')) return 'javascript';
+            if (stepPattern.includes('*.rb')) return 'ruby';
+            if (stepPattern.includes('*.java')) return 'java';
+            if (stepPattern.includes('*.py')) return 'python';
+            if (stepPattern.includes('*.kt')) return 'kotlin';
+        }
+        return 'javascript'; // default
+    }
+
+    /**
+     * Count parameter types in a step pattern and generate parameter names
+     */
+    private generateParameterList(parameterTypesPattern: string): string {
+        const parameterTypes = parameterTypesPattern.match(/\{(string|int|float|word)\}/g) || [];
+        if (parameterTypes.length === 0) {
+            return '';
+        }
+        
+        // Count occurrences of each parameter type
+        const typeCounts = new Map<string, number>();
+        
+        const parameters = parameterTypes.map((match) => {
+            const type = match.slice(1, -1); // Remove { and }
+            const count = typeCounts.get(type) || 0;
+            typeCounts.set(type, count + 1);
+            
+            // Generate appropriate parameter name based on type
+            switch (type) {
+            case 'string':
+                return count === 0 ? 'str1' : `str${count + 1}`;
+            case 'int':
+                return count === 0 ? 'int1' : `int${count + 1}`;
+            case 'float':
+                return count === 0 ? 'float1' : `float${count + 1}`;
+            case 'word':
+                return count === 0 ? 'word1' : `word${count + 1}`;
+            default:
+                return count === 0 ? 'param1' : `param${count + 1}`;
+            }
+        });
+        
+        return ', ' + parameters.join(', ');
+    }
+
+    /**
+     * Generate step definition template for given language
+     */
+    generateStepDefinition(stepText: string, gherkinType: string): string {
+        const language = this.detectLanguage();
+        const normalizedGherkinType = gherkinType.toLowerCase();
+        
+        // Convert step text to parameter types pattern
+        const parameterTypesPattern = this.convertStepTextToParameterTypes(stepText);
+        
+        const capitalizedGherkinType = normalizedGherkinType.charAt(0).toUpperCase() + normalizedGherkinType.slice(1);
+        
+        // Check if custom step template is provided in settings
+        if (this.settings.stepTemplate) {
+            // For custom templates, use the appropriate case based on language
+            const language = this.detectLanguage();
+            const gherkinForTemplate = (language === 'javascript' || language === 'typescript') ? 
+                capitalizedGherkinType : normalizedGherkinType;
+            
+            const parameterList = this.generateParameterList(parameterTypesPattern);
+            
+            return this.settings.stepTemplate
+                .replace(/\{gherkinType\}/g, gherkinForTemplate)
+                .replace(/\{stepPattern\}/g, parameterTypesPattern)
+                .replace(/\{parameterList\}/g, parameterList);
+        }
+        
+        // Generate parameters for JS/TS
+        const parameterList = this.generateParameterList(parameterTypesPattern);
+        
+        const templates: {[key: string]: string} = {
+            javascript: `${capitalizedGherkinType}('${parameterTypesPattern}', async ({page}${parameterList}) => {
+    // TODO: implement step
+    throw new Error('Step not implemented');
+});`,
+            typescript: `${capitalizedGherkinType}('${parameterTypesPattern}', async ({page}${parameterList}) => {
+    // TODO: implement step
+    throw new Error('Step not implemented');
+});`,
+            ruby: `${normalizedGherkinType}('${parameterTypesPattern}') do
+    # TODO: implement step
+    raise NotImplementedError, 'Step not implemented'
+end`,
+            java: `@${capitalizedGherkinType}("${parameterTypesPattern}")
+public void stepMethod() {
+    // TODO: implement step
+    throw new RuntimeException("Step not implemented");
+}`,
+            python: `@${normalizedGherkinType}('${parameterTypesPattern}')
+def step_method(context):
+    # TODO: implement step
+    raise NotImplementedError('Step not implemented')`,
+            kotlin: `@${capitalizedGherkinType}("${parameterTypesPattern}")
+fun stepMethod() {
+    // TODO: implement step
+    throw NotImplementedError("Step not implemented")
+}`
+        };
+
+        return templates[language] || templates.javascript;
+    }
+
+    /**
+     * Convert step text to parameter types pattern for step definition
+     */
+    private convertStepTextToParameterTypes(stepText: string): string {
+        let result = stepText;
+        
+        // Replace quoted strings with {string} parameter type
+        result = result.replace(/"([^"]*)"/g, '{string}');
+        
+        // Replace single quoted strings with {string} parameter type  
+        result = result.replace(/'([^']*)'/g, '{string}');
+        
+        // Replace floating point numbers with {float} parameter type (must come before int)
+        result = result.replace(/\b\d+\.\d+\b/g, '{float}');
+        
+        // Replace numbers with {int} parameter type
+        result = result.replace(/\b\d+\b/g, '{int}');
+        
+        return result;
+    }
+
+    /**
+     * Get list of step definition files for user selection
+     */
+    getStepDefinitionFiles(): Array<{label: string, path: string}> {
+        const { steps } = this.settings;
+        const files: Array<{label: string, path: string}> = [];
+        
+        steps.forEach(pattern => {
+            const globPattern = pattern.startsWith('/') ? pattern : `/${pattern}`;
+            const matchedFiles = glob.sync(this.workspaceRoot + globPattern);
+            
+            matchedFiles.forEach(filePath => {
+                const relativePath = filePath.replace(this.workspaceRoot + '/', '');
+                files.push({
+                    label: relativePath.split('/').pop() || relativePath,
+                    path: filePath
+                });
+            });
+        });
+        
+        return files;
+    }
+
+    /**
+     * Get completion items for the current line
+     */
+    getCompletionItems(line: string, position: number, document: string): CompletionItem[] {
+        const match = this.getGherkinMatch(line, document);
+        if (!match) {
+            return [];
+        }
+
+        const beforeGherkin = match[1];
+        const gherkinWord = match[2];
+        const afterGherkin = match[3];
+        let stepText = match[4];
+
+        // Remove incomplete last word for better matching
+        const cursorPosition = position - beforeGherkin.length - gherkinWord.length - afterGherkin.length;
+        if (cursorPosition > 0 && cursorPosition <= stepText.length) {
+            const beforeCursor = stepText.substring(0, cursorPosition);
+            const afterCursor = stepText.substring(cursorPosition);
+            
+            // Remove incomplete last word
+            const lastSpaceIndex = beforeCursor.lastIndexOf(' ');
+            if (lastSpaceIndex !== -1) {
+                stepText = beforeCursor.substring(0, lastSpaceIndex);
+            } else {
+                stepText = '';
+            }
+        }
+
+        const gherkinType = getGherkinType(gherkinWord);
+        const targetGherkinType = this.getCompletionGherkinType(gherkinType, line, document);
+
+        // Filter candidate steps
+        const candidateSteps = this.filterCandidateSteps(stepText, targetGherkinType);
+        
+        // Generate completion items
+        const completionItems: CompletionItem[] = [];
+        
+        for (const step of candidateSteps) {
+            const variants = this.expandStepVariants(step);
+            for (const variant of variants) {
+                const insertText = this.getInsertText(stepText, variant, position);
+                if (insertText) {
+                    completionItems.push(this.createCompletionItem(variant, insertText));
+                }
+            }
+        }
+
+        // Sort by usage count (most used first)
+        completionItems.sort((a, b) => {
+            const aCount = this.getElementCount(a.data?.stepId || '');
+            const bCount = this.getElementCount(b.data?.stepId || '');
+            return bCount - aCount;
+        });
+
+        return completionItems;
+    }
+
+    /**
+     * Determine the effective Gherkin type for completion
+     */
+    private getCompletionGherkinType(gherkinType: GherkinType, line: string, document: string): GherkinType {
+        // For And/But, find the previous step type
+        if (gherkinType === GherkinType.And || gherkinType === GherkinType.But) {
+            return this.getStrictGherkinType(
+                gherkinType === GherkinType.And ? 'And' : 'But',
+                this.getLineNumber(line, document),
+                document
+            );
+        }
+        return gherkinType;
+    }
+
+    /**
+     * Get line number in document
+     */
+    private getLineNumber(line: string, document: string): number {
+        const lines = document.split(/\r?\n/g);
+        return lines.indexOf(line);
+    }
+
+    /**
+     * Filter candidate steps based on text and gherkin type
+     */
+    private filterCandidateSteps(stepText: string, targetGherkinType: GherkinType): Step[] {
+        const { strictGherkinCompletion } = this.settings;
+        
+        return this.elements.filter(step => {
+            // Check Gherkin type matching
+            if (strictGherkinCompletion && targetGherkinType !== GherkinType.Other) {
+                if (step.gherkin !== targetGherkinType) {
+                    return false;
+                }
             }
 
-            this.debounceTimer = setTimeout(() => {
-                resolve(this.getCompletionSync(line, lineNumber, text));
-            }, this.settings.debounceDelay || StepsHandler.DEFAULT_DEBOUNCE_DELAY);
+            // Check if step matches the entered text
+            if (stepText.trim()) {
+                return step.partialReg.test(stepText);
+            }
+
+            return true;
         });
     }
 
-    // Синхронная версия автокомплита с оптимизациями
-    private getCompletionSync(
-        line: string,
-        lineNumber: number,
-        text: string
-    ): CompletionItem[] | null {
-        const match = this.getGherkinMatch(line, text);
-        if (!match) {
-            return null;
+    /**
+     * Expand step variants for stepsInvariants
+     */
+    private expandStepVariants(step: Step): Step[] {
+        if (!this.settings.stepsInvariants) {
+            return [step];
         }
 
-        const [, , gherkinPart, , stepPartBase] = match;
-        let stepPart = stepPartBase || '';
-        stepPart = stepPart.replace(/[^\s]+$/, '');
+        const variants: Step[] = [];
+        const orPattern = /\(([^)]+)\)/g;
+        let match;
+        const orGroups: Array<{match: string, options: string[]}> = [];
 
-        // Получаем релевантные steps через индексы (если включено индексирование)
-        let candidateSteps: Step[] = [];
-
-        if (this.settings.enableStepIndexing) {
-            if (this.settings.strictGherkinCompletion) {
-                const strictGherkinPart = this.getStrictGherkinType(
-                    gherkinPart,
-                    lineNumber,
-                    text
-                );
-                candidateSteps = this.stepsByGherkin.get(strictGherkinPart) || [];
-            } else {
-                // Используем индекс по префиксу для ускорения поиска
-                const prefix = stepPart.trim().substring(0, 3).toLowerCase();
-                if (prefix.length >= 3) {
-                    candidateSteps = this.stepsByPrefix.get(prefix) || this.elements;
-                } else {
-                    candidateSteps = this.elements;
-                }
-            }
-        } else {
-            // Оригинальная логика без индексирования
-            candidateSteps = this.elements.filter((step) => {
-                if (this.settings.strictGherkinCompletion) {
-                    const strictGherkinPart = this.getStrictGherkinType(
-                        gherkinPart,
-                        lineNumber,
-                        text
-                    );
-                    return step.gherkin === strictGherkinPart;
-                } else {
-                    return true;
-                }
+        // Find all OR groups
+        while ((match = orPattern.exec(step.text)) !== null) {
+            const options = match[1].split('|').map(opt => opt.trim());
+            orGroups.push({
+                match: match[0],
+                options: options
             });
         }
 
-        // Фильтрация и маппинг с ограничением количества результатов
-        const results = candidateSteps
-            .filter((step) => {
-                try {
-                    return step.partialReg.test(stepPart);
-                } catch {
-                    return false;
-                }
-            })
-            .sort((a, b) => b.count - a.count) // Сортировка по частоте использования
-            .slice(0, this.settings.maxCompletionItems || StepsHandler.DEFAULT_MAX_COMPLETION_ITEMS)
-            .map((step) => ({
-                label: step.text,
-                kind: CompletionItemKind.Snippet,
-                data: step.id,
-                documentation: step.documentation,
-                sortText: getSortPrefix(step.count, 5) + '_' + step.text,
-                insertText: this.getCompletionInsertText(step.text, stepPart),
-                insertTextFormat: InsertTextFormat.Snippet,
-            }));
+        if (orGroups.length === 0) {
+            return [step];
+        }
 
-        return results.length ? results : null;
+        // Generate all combinations
+        const generateCombinations = (text: string, groupIndex: number): string[] => {
+            if (groupIndex >= orGroups.length) {
+                return [text];
+            }
+
+            const group = orGroups[groupIndex];
+            const results: string[] = [];
+            
+            for (const option of group.options) {
+                const newText = text.replace(group.match, option);
+                results.push(...generateCombinations(newText, groupIndex + 1));
+            }
+            
+            return results;
+        };
+
+        const combinations = generateCombinations(step.text, 0);
+        
+        for (const combination of combinations) {
+            const variant: Step = {
+                ...step,
+                text: combination,
+                reg: this.getRegExpCached(this.getRegTextForStep(combination)),
+                partialReg: this.getPartialRegExpCached(combination)
+            };
+            variants.push(variant);
+        }
+
+        return variants;
     }
 
-    getCompletion(
-        line: string,
-        lineNumber: number,
-        text: string
-    ): CompletionItem[] | null {
-        // Используем синхронную версию для обратной совместимости
-        return this.getCompletionSync(line, lineNumber, text);
+    /**
+     * Get insert text for completion
+     */
+    private getInsertText(enteredText: string, step: Step, position: number): string | null {
+        const stepText = step.text;
+        
+        // If entered text is empty, return full step
+        if (!enteredText.trim()) {
+            return this.processInsertText(stepText);
+        }
+
+        // Check if the step matches the entered text
+        if (!step.partialReg.test(enteredText)) {
+            return null;
+        }
+
+        // Find the common prefix
+        const commonLength = this.getCommonPrefixLength(enteredText, stepText);
+        if (commonLength >= stepText.length) {
+            return null; // Step is already fully typed
+        }
+
+        // Return the remaining part
+        const remainingText = stepText.substring(commonLength);
+        return this.processInsertText(remainingText);
     }
 
-    getCompletionResolve(item: CompletionItem): CompletionItem {
-        this.incrementElementCount(item.data);
-        return item;
+    /**
+     * Get common prefix length between entered text and step text
+     */
+    private getCommonPrefixLength(enteredText: string, stepText: string): number {
+        const normalizedEntered = enteredText.trim().toLowerCase();
+        const normalizedStep = stepText.trim().toLowerCase();
+        
+        // If entered text is empty, return 0
+        if (!normalizedEntered) {
+            return 0;
+        }
+        
+        // If step doesn't start with entered text, return 0
+        if (!normalizedStep.startsWith(normalizedEntered)) {
+            return 0;
+        }
+        
+        let commonLength = normalizedEntered.length;
+        
+        // If the entered text ends with a space, use it as is
+        if (normalizedEntered.endsWith(' ')) {
+            return commonLength;
+        }
+        
+        // If we're at the end of the step text, use the full length
+        if (commonLength >= normalizedStep.length) {
+            return commonLength;
+        }
+        
+        // If the next character in step is a space, include the space in common prefix
+        if (normalizedStep[commonLength] === ' ') {
+            return commonLength + 1;
+        }
+        
+        // Find the last complete word boundary
+        const lastSpaceIndex = normalizedEntered.lastIndexOf(' ');
+        return lastSpaceIndex >= 0 ? lastSpaceIndex + 1 : 0;
     }
+
+    /**
+     * Process insert text with smart snippets or simple placeholders
+     */
+    private processInsertText(text: string): string {
+        const { smartSnippets } = this.settings;
+        
+        if (!smartSnippets) {
+            // Simple regex cleanup
+            return text
+                .replace(/\(\?\:.*?\)/g, '') // Remove non-capturing groups
+                .replace(/\[.*?\]/g, '') // Remove character classes
+                .replace(/\{.*?\}/g, '') // Remove parameter types
+                .replace(/\.\*/g, '') // Remove .* patterns
+                .replace(/\.\+/g, '') // Remove .+ patterns
+                .replace(/\\\./g, '.') // Unescape dots
+                .replace(/\\\(/g, '(') // Unescape parentheses
+                .replace(/\\\)/g, ')') // Unescape parentheses
+                .replace(/\\\|/g, '|') // Unescape pipes
+                .replace(/\\\+/g, '+') // Unescape plus
+                .replace(/\\\*/g, '*') // Unescape asterisk
+                .replace(/\\\?/g, '?') // Unescape question mark
+                .replace(/\\\^/g, '^') // Unescape caret
+                .replace(/\\\$/g, '$') // Unescape dollar
+                .replace(/\\\[/g, '[') // Unescape square brackets
+                .replace(/\\\]/g, ']') // Unescape square brackets
+                .replace(/\\\{/g, '{') // Unescape curly brackets
+                .replace(/\\\}/g, '}') // Unescape curly brackets
+                .replace(/\\\\/g, '\\'); // Unescape backslashes
+        }
+
+        let result = text;
+
+        // Convert parameter types to simple placeholders
+        const placeholderPatterns = [
+            // Parameter types to simple placeholders
+            [/\{string\}/g, '""'],
+            [/\{int\}/g, '?'],
+            [/\{float\}/g, '?'],
+            [/\{word\}/g, '?'],
+            [/\{\}/g, '?'],
+            
+            // Common regex patterns to simple placeholders
+            [/\(\.\*\?\)/g, '?'],
+            [/\(\.\*\)/g, '?'],
+            [/\(\.\+\?\)/g, '?'],
+            [/\(\.\+\)/g, '?'],
+            [/\(\\w\+\)/g, '?'],
+            [/\(\\d\+\)/g, '?'],
+            [/\(\[\^\"\]\+\)/g, '""'],
+            [/\(\[\^\'\]\+\)/g, "''"],
+            [/\(\[\^\\s\]\+\)/g, '?'],
+            
+            // Quoted string patterns
+            [/"([^"]+)"/g, '""'],
+            [/'([^']+)'/g, "''"],
+            
+            // Generic capturing groups
+            [/\(([^)]+)\)/g, '?'],
+        ];
+
+        for (const [pattern, replacement] of placeholderPatterns) {
+            result = result.replace(pattern as RegExp, replacement as string);
+        }
+
+        // Clean up any remaining regex artifacts
+        result = result
+            .replace(/\(\?\:.*?\)/g, '') // Remove non-capturing groups
+            .replace(/\[.*?\]/g, '') // Remove character classes
+            .replace(/\\\./g, '.') // Unescape dots
+            .replace(/\\\(/g, '(') // Unescape parentheses
+            .replace(/\\\)/g, ')') // Unescape parentheses
+            .replace(/\\\|/g, '|') // Unescape pipes
+            .replace(/\\\+/g, '+') // Unescape plus
+            .replace(/\\\*/g, '*') // Unescape asterisk
+            .replace(/\\\?/g, '?') // Unescape question mark
+            .replace(/\\\^/g, '^') // Unescape caret
+            .replace(/\\\$/g, '$') // Unescape dollar
+            .replace(/\\\[/g, '[') // Unescape square brackets
+            .replace(/\\\]/g, ']') // Unescape square brackets
+            .replace(/\\\{/g, '{') // Unescape curly brackets
+            .replace(/\\\}/g, '}') // Unescape curly brackets
+            .replace(/\\\\/g, '\\'); // Unescape backslashes
+
+        return result;
+    }
+
+    /**
+     * Create completion item
+     */
+    private createCompletionItem(step: Step, insertText: string): CompletionItem {
+        const { smartSnippets } = this.settings;
+        
+        return {
+            label: step.text,
+            kind: smartSnippets ? CompletionItemKind.Snippet : CompletionItemKind.Text,
+            insertText: insertText,
+            documentation: step.documentation || step.desc,
+            sortText: getSortPrefix(step.count, 3) + step.text,
+            data: {
+                stepId: step.id,
+                stepDef: step.def
+            }
+        };
+    }
+
+    /**
+     * Legacy method for backward compatibility with tests
+     */
+    getCompletion(line: string, position: number, document: string): Array<{label: string, insertText: string, sortText: string}> | null {
+        const completionItems = this.getCompletionItems(line, position, document);
+        
+        if (completionItems.length === 0) {
+            return null;
+        }
+        
+        return completionItems.map(item => ({
+            label: item.label,
+            insertText: item.insertText || '',
+            sortText: item.sortText || ''
+        }));
+    }
+
+    /**
+     * Legacy method for backward compatibility with tests
+     */
+    getCompletionInsertText(regExpText: string, enteredText: string): string | null {
+        // Find step with matching regex text
+        const step = this.elements.find(s => s.text === regExpText);
+        if (!step) {
+            return null;
+        }
+        
+        return this.getInsertText(enteredText, step, 0);
+    }
+
+    /**
+     * Legacy method for backward compatibility with tests
+     */
+    getCompletionOptimized(line: string, position: number, document: string): Promise<Array<{label: string, insertText: string, sortText: string}> | null> {
+        return Promise.resolve(this.getCompletion(line, position, document));
+    }
+
 }

@@ -40,3 +40,22 @@ this.When(/^I test outline using "[0-9]*" variable$/, function (next) {
 
 //Lower Case step definition test
 this.when(/I test lower case step definition/, function(next){})
+
+//Parameter types test
+this.When(/^I biba dopa "([^"]*)" for (\d+) times for "([^"]*)" seconds$/, function (str1, int1, str2, next) {
+    next;
+});
+
+//Parameter types with modern syntax
+this.When('I biba dopa {string} for {int} times for {string} seconds', function (str1, int1, str2, next) {
+    next;
+});
+
+//More parameter types
+this.Given(/^I have a {int} in my belly$/, function (int1, next) {
+    next;
+});
+
+this.Then(/^I should have {float} dollars$/, function (float1, next) {
+    next;
+});

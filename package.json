@@ -1,11 +1,11 @@
 {
   "name": "gherkin-extension",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "viktor-silakov",
   "author": "Viktor Silakov, Alexander Krechik",
   "license": "MIT",
   "displayName": "Gherkin VSCode Extension",
-  "description": "VSCode Gherkin Full Language Support + Formatting + Autocomplete",
+  "description": "VSCode Gherkin Full Language Support + Formatting",
   "homepage": "https://github.com/viktor-silakov/gherkin-extension",
   "engines": {
     "vscode": "^1.75.0"
@@ -23,12 +23,18 @@
   "keywords": [
     "gherkin",
     "cucumber",
-    "feature",
-    "autocomplete"
+    "feature"
   ],
   "main": "./gclient/out/extension",
   "icon": "img/gwt.png",
   "contributes": {
+    "commands": [
+      {
+        "command": "cucumberautocomplete.generateStepDefinition",
+        "title": "Generate Step Definition",
+        "category": "Cucumber"
+      }
+    ],
     "languages": [
       {
         "id": "feature",
@@ -97,24 +103,14 @@
           "required": false,
           "default": "test/features/*.feature"
         },
-        "cucumberautocomplete.strictGherkinCompletion": {
-          "description": "Strict comparing of declaration func and gherkin word (ex. show only steps, declared via 'When()' func for the 'When ' string",
-          "type": "boolean",
-          "required": false,
-          "default": false
-        },
+
         "cucumberautocomplete.strictGherkinValidation": {
           "description": "Compare step body and gherkin word during steps validation",
           "type": "boolean",
           "required": false,
           "default": false
         },
-        "cucumberautocomplete.smartSnippets": {
-          "description": "Change all the parts, that requires some user input (like .*, ([a-z]+), \\w{1,3}) to snippets",
-          "type": "boolean",
-          "required": false,
-          "default": false
-        },
+
         "cucumberautocomplete.stepsInvariants": {
           "description": "Show all the 'or' steps parts as separate suggestions (ex. show `I use a` and `I use b` steps suggestions for the `I use (a|b)` step",
           "type": "boolean",
@@ -163,32 +159,20 @@
           "required": false,
           "default": false
         },
+        "cucumberautocomplete.stepTemplate": {
+          "description": "Custom step template for generated step definitions. Use {gherkinType}, {stepPattern}, and {parameterList} placeholders",
+          "type": "string",
+          "required": false,
+          "default": ""
+        },
         "cucumberautocomplete.enablePerformanceOptimizations": {
-          "description": "Enable performance optimizations for better autocomplete speed and memory usage",
+          "description": "Enable performance optimizations for better speed and memory usage",
           "type": "boolean",
           "required": false,
           "default": true
-        },
-        "cucumberautocomplete.maxCompletionItems": {
-          "description": "Maximum number of completion items to show",
-          "type": "number",
-          "required": false,
-          "default": 50
-        },
-        "cucumberautocomplete.debounceDelay": {
-          "description": "Debounce delay in milliseconds for autocomplete",
-          "type": "number",
-          "required": false,
-          "default": 100
         },
         "cucumberautocomplete.enableRegexCaching": {
           "description": "Enable caching of compiled regular expressions",
-          "type": "boolean",
-          "required": false,
-          "default": true
-        },
-        "cucumberautocomplete.enableStepIndexing": {
-          "description": "Enable indexing of steps for faster search",
           "type": "boolean",
           "required": false,
           "default": true

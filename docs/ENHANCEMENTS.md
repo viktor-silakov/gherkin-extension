@@ -4,6 +4,161 @@ This document tracks all enhancements, bug fixes, and modifications made to the 
 
 ## 🚀 Recent Enhancements
 
+### 2025-01-16: Parameter Types to Simple Placeholders (Feature Request)
+**Issue**: Users wanted autocompletion to convert parameter types in step definitions to simple, intuitive placeholders that are easy to fill in.
+
+**Solution**: Implemented intelligent parameter type conversion that transforms complex parameter syntax into user-friendly placeholders.
+
+**Request Example**:
+```typescript
+When(
+  'I biba dopa {string} for {int} times for {string} seconds',
+  async ({ page }, str1, int1, str2) => {
+  }
+);
+```
+
+**Result**: Autocompletion now produces:
+```gherkin
+When I biba dopa "" for ? times for "" seconds
+```
+
+**Files Modified**:
+- `gserver/src/steps.handler.ts` - Enhanced `processInsertText()` method for parameter type conversion
+- `gserver/test/completion.spec.ts` - Added comprehensive tests for parameter type conversion
+- `gserver/test/data/steps/test.steps.js` - Added test step definitions with parameter types
+
+**New Features**:
+- **Parameter Type Conversion**: `{string}` → `""`, `{int}` → `?`, `{float}` → `?`, `{word}` → `?`
+- **Regex Pattern Support**: Converts legacy regex patterns like `"([^"]*)"` → `""`
+- **Mixed Parameter Types**: Handles complex step definitions with multiple parameter types
+- **Intuitive Placeholders**: Simple visual cues for what to fill in
+- **Context Preservation**: Maintains original autocompletion context awareness
+
+**Configuration**:
+```json
+{
+  "cucumberautocomplete.smartSnippets": true,
+  "cucumberautocomplete.strictGherkinCompletion": true
+}
+```
+
+**Benefits**:
+- **User-Friendly**: Simple placeholders are immediately understandable
+- **Efficient**: Quick to fill in without complex navigation
+- **Consistent**: Standardized placeholder format across all parameter types
+- **Error-Reducing**: Clear distinction between string and numeric parameters
+
+### 2025-01-16: Enhanced Autocompletion System (Feature Request)
+**Issue**: The plugin lacked comprehensive autocompletion support for Gherkin steps, making it difficult for developers to discover and use existing step definitions while writing feature files.
+
+**Solution**: Implemented a full-featured autocompletion system that provides intelligent suggestions for Gherkin steps with smart snippet generation, filtering, and usage-based sorting.
+
+**Files Modified**:
+- `gserver/src/types.ts` - Added autocompletion-related settings (`strictGherkinCompletion`, `smartSnippets`)
+- `gserver/src/steps.handler.ts` - Implemented comprehensive autocompletion logic with filtering and snippet generation
+- `gserver/src/server.ts` - Added completion provider capability and handlers
+- `gserver/src/pages.handler.ts` - Enhanced page object completion support
+
+**New Features**:
+- **Intelligent Step Filtering**: Filters step suggestions based on Gherkin type (Given/When/Then/And/But)
+- **Smart Snippet Generation**: Converts regex patterns to VS Code snippets with parameter placeholders
+- **Usage-Based Sorting**: Frequently used steps appear first in completion list
+- **Contextual Gherkin Type Detection**: For And/But steps, determines appropriate context from previous steps
+- **Parameter Type Conversion**: Transforms `{string}`, `{int}`, `{float}` into snippet placeholders like `${1:string}`
+- **Partial Matching**: Supports completion for partially typed steps
+- **Step Variants Support**: Expands OR-grouped steps into separate completion items
+- **Documentation Integration**: Shows JSDoc comments from step definitions in completion popup
+
+**Configuration Options**:
+- `strictGherkinCompletion`: When `true`, only shows steps matching the current Gherkin type
+- `smartSnippets`: When `true`, converts regex patterns to interactive snippets with tab stops
+
+**Examples**:
+
+**Before**: No autocompletion support
+```gherkin
+Given I login with "   |  # No suggestions available
+```
+
+**After**: Intelligent autocompletion with snippets
+```gherkin
+Given I login with "   |  # Shows: I login with "${1:username}" and "${2:password}"
+```
+
+**Features Demonstrated**:
+- Smart parameter detection and snippet generation
+- Context-aware suggestions based on step type
+- Integration with existing step definitions
+- Support for complex regex patterns converted to user-friendly snippets
+
+### 2025-01-16: Parameter Types Step Generation (Feature Request)
+**Issue**: Step definitions were being generated with regex patterns instead of modern parameter types. Users requested support for Cucumber expressions like `{string}`, `{int}`, `{float}` instead of complex regex patterns like `"([^"]*)"` or `(\\d+)`.
+
+**Solution**: Implemented parameter types-based step generation that converts Gherkin step text to modern Cucumber expressions, with support for custom step templates.
+
+**Files Modified**:
+- `gserver/src/types.ts` - Added `stepTemplate` property to settings interfaces
+- `gserver/src/steps.handler.ts` - Replaced regex generation with parameter types conversion
+- `gserver/test/stepDefinitionGeneration.spec.ts` - Updated tests for parameter types functionality
+- `package.json` - Added `stepTemplate` configuration option
+
+**New Features**:
+- **Parameter Types Conversion**: Steps now generate with `{string}`, `{int}`, `{float}` instead of regex
+- **Page Parameter Support**: JavaScript/TypeScript steps now include `{page}` as first parameter for Playwright compatibility
+- **Auto Parameter Generation**: Automatically generates `str1`, `int1`, `float1`, etc. based on parameter type
+- **Custom Step Templates**: Users can define their own step templates with `{gherkinType}`, `{stepPattern}`, and `{parameterList}` placeholders
+- **Improved TypeScript Support**: Generated TypeScript steps now use `async ({page}, str1, int1) =>` syntax
+- **Better Developer Experience**: Cleaner, more readable step definitions
+
+**Examples**:
+
+**Before (Regex)**:
+```gherkin
+When I open the "LICENSE" file
+```
+Generated:
+```typescript
+when(/^I open the "([^"]*)" file$/, function() {
+    // TODO: implement step
+    throw new Error('Step not implemented');
+});
+```
+
+**After (Parameter Types with {page} Support)**:
+```gherkin
+When I open the "LICENSE" file
+```
+Generated:
+```typescript
+When('I open the {string} file', async ({page}, str1) => {
+    // TODO: implement step
+    throw new Error('Step not implemented');
+});
+```
+
+**Custom Template Example**:
+```json
+{
+  "cucumberautocomplete.stepTemplate": "{gherkinType}('{stepPattern}', async ({page}{parameterList}) => {\n    // Custom implementation\n    throw new Error('Not implemented');\n});"
+}
+```
+
+**Configuration**:
+- **stepTemplate**: Custom step template with placeholders `{gherkinType}`, `{stepPattern}`, and `{parameterList}`
+- Templates have priority over default language-specific templates
+- Empty by default (uses built-in templates)
+- `{parameterList}` generates comma-separated parameter names (e.g., `, str1, int1, int2`)
+
+**Benefits**:
+- **Modern Cucumber Expressions**: Uses standard `{string}`, `{int}`, `{float}` parameter types
+- **Playwright-Ready**: Generated steps include `{page}` parameter for Playwright compatibility
+- **Cleaner Step Definitions**: No complex regex patterns in generated code
+- **Better Readability**: Step definitions are more readable and maintainable
+- **Auto Parameter Handling**: Automatically generates parameter names for each parameter type
+- **Customizable Templates**: Users can define their own step generation templates
+- **Framework Agnostic**: Works with any Cucumber framework supporting parameter types
+
 ### 2025-01-09: Enhanced Build System and Interactive Release
 **Issue**: VSIX packages were being created in the root directory, cluttering the workspace. The release process was manual and error-prone, requiring multiple steps and careful version management.
 

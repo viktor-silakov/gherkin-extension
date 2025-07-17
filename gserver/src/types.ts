@@ -19,9 +19,7 @@ export interface BaseSettings {
     steps?: StepSettings,
     pages?: PagesSettings,
     syncfeatures?: boolean | string,
-    strictGherkinCompletion?: boolean,
     strictGherkinValidation?: boolean,
-    smartSnippets?: boolean,
     stepsInvariants?: boolean,
     customParameters?: CustomParameter[],
     skipDocStringsFormat?: boolean,
@@ -30,21 +28,21 @@ export interface BaseSettings {
     gherkinDefinitionPart?: string,
     stepRegExSymbol?: string
     pureTextSteps?: boolean,
+    // Step template settings
+    stepTemplate?: string,
     // Настройки оптимизации производительности
     enablePerformanceOptimizations?: boolean,
-    maxCompletionItems?: number,
-    debounceDelay?: number,
     enableRegexCaching?: boolean,
-    enableStepIndexing?: boolean
+    // Autocompletion settings
+    strictGherkinCompletion?: boolean,
+    smartSnippets?: boolean,
 }
 
 export interface Settings {
     steps: StepSettings,
     pages: PagesSettings,
     syncfeatures?: boolean | string,
-    strictGherkinCompletion?: boolean,
     strictGherkinValidation?: boolean,
-    smartSnippets?: boolean,
     stepsInvariants?: boolean,
     customParameters?: CustomParameter[],
     skipDocStringsFormat?: boolean,
@@ -53,10 +51,12 @@ export interface Settings {
     gherkinDefinitionPart?: string,
     stepRegExSymbol?: string
     pureTextSteps?: boolean,
+    // Step template settings
+    stepTemplate?: string,
     // Настройки оптимизации производительности
     enablePerformanceOptimizations?: boolean,
-    maxCompletionItems?: number,
-    debounceDelay?: number,
     enableRegexCaching?: boolean,
-    enableStepIndexing?: boolean
+    // Autocompletion settings
+    strictGherkinCompletion?: boolean,
+    smartSnippets?: boolean,
 }
