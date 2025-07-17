@@ -444,11 +444,29 @@ export default class StepsHandler {
     }
 
     getTextForStep(step: string): string {
-    //Remove all the backslashes
-        step = step.replace(/\\/g, '');
+        // Remove all the backslashes, but handle escaped characters properly
+        step = step
+            .replace(/\\"/g, '"')     // Replace \" with "
+            .replace(/\\'/g, "'")     // Replace \' with '
+            .replace(/\\n/g, '\n')    // Replace \n with newline
+            .replace(/\\t/g, '\t')    // Replace \t with tab
+            .replace(/\\r/g, '\r')    // Replace \r with carriage return
+            .replace(/\\s/g, 's')     // Replace \s with s (this is regex, keep as text)
+            .replace(/\\d/g, 'd')     // Replace \d with d (this is regex, keep as text)
+            .replace(/\\w/g, 'w')     // Replace \w with w (this is regex, keep as text)
+            .replace(/\\\\/g, '\\')   // Replace \\ with \
+            .replace(/\\(.)/g, '$1'); // Replace any other \x with x
 
         //Remove "string start" and "string end" RegEx symbols
         step = step.replace(/^\^|\$$/g, '');
+
+        // Clean up common regex patterns to make them more user-friendly
+        step = step
+            .replace(/\([^)]*\)/g, '') // Remove capturing groups and their contents
+            .replace(/\[[^\]]*\]/g, '') // Remove character classes
+            .replace(/\(\?:[^)]*\)/g, '') // Remove non-capturing groups
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .trim(); // Remove leading/trailing whitespace
 
         return step;
     }
@@ -997,8 +1015,8 @@ fun stepMethod() {
 
         // Sort by usage count (most used first)
         completionItems.sort((a, b) => {
-            const aCount = this.getElementCount(a.data?.stepId || '');
-            const bCount = this.getElementCount(b.data?.stepId || '');
+            const aCount = this.getElementCount((a.data && a.data.stepId) || '');
+            const bCount = this.getElementCount((b.data && b.data.stepId) || '');
             return bCount - aCount;
         });
 
@@ -1153,7 +1171,7 @@ fun stepMethod() {
             return 0;
         }
         
-        let commonLength = normalizedEntered.length;
+        const commonLength = normalizedEntered.length;
         
         // If the entered text ends with a space, use it as is
         if (normalizedEntered.endsWith(' ')) {
@@ -1179,69 +1197,51 @@ fun stepMethod() {
      * Process insert text with smart snippets or simple placeholders
      */
     private processInsertText(text: string): string {
-        const { smartSnippets } = this.settings;
-        
-        if (!smartSnippets) {
-            // Simple regex cleanup
-            return text
-                .replace(/\(\?\:.*?\)/g, '') // Remove non-capturing groups
-                .replace(/\[.*?\]/g, '') // Remove character classes
-                .replace(/\{.*?\}/g, '') // Remove parameter types
-                .replace(/\.\*/g, '') // Remove .* patterns
-                .replace(/\.\+/g, '') // Remove .+ patterns
-                .replace(/\\\./g, '.') // Unescape dots
-                .replace(/\\\(/g, '(') // Unescape parentheses
-                .replace(/\\\)/g, ')') // Unescape parentheses
-                .replace(/\\\|/g, '|') // Unescape pipes
-                .replace(/\\\+/g, '+') // Unescape plus
-                .replace(/\\\*/g, '*') // Unescape asterisk
-                .replace(/\\\?/g, '?') // Unescape question mark
-                .replace(/\\\^/g, '^') // Unescape caret
-                .replace(/\\\$/g, '$') // Unescape dollar
-                .replace(/\\\[/g, '[') // Unescape square brackets
-                .replace(/\\\]/g, ']') // Unescape square brackets
-                .replace(/\\\{/g, '{') // Unescape curly brackets
-                .replace(/\\\}/g, '}') // Unescape curly brackets
-                .replace(/\\\\/g, '\\'); // Unescape backslashes
-        }
-
         let result = text;
 
-        // Convert parameter types to simple placeholders
-        const placeholderPatterns = [
-            // Parameter types to simple placeholders
-            [/\{string\}/g, '""'],
-            [/\{int\}/g, '?'],
-            [/\{float\}/g, '?'],
-            [/\{word\}/g, '?'],
-            [/\{\}/g, '?'],
-            
-            // Common regex patterns to simple placeholders
-            [/\(\.\*\?\)/g, '?'],
-            [/\(\.\*\)/g, '?'],
-            [/\(\.\+\?\)/g, '?'],
-            [/\(\.\+\)/g, '?'],
-            [/\(\\w\+\)/g, '?'],
-            [/\(\\d\+\)/g, '?'],
-            [/\(\[\^\"\]\+\)/g, '""'],
-            [/\(\[\^\'\]\+\)/g, "''"],
-            [/\(\[\^\\s\]\+\)/g, '?'],
-            
-            // Quoted string patterns
-            [/"([^"]+)"/g, '""'],
-            [/'([^']+)'/g, "''"],
-            
-            // Generic capturing groups
-            [/\(([^)]+)\)/g, '?'],
-        ];
-
-        for (const [pattern, replacement] of placeholderPatterns) {
-            result = result.replace(pattern as RegExp, replacement as string);
-        }
+        // Handle specific patterns in order of specificity to avoid conflicts
+        
+        // 1. Parameter types
+        result = result.replace(/\{string\}/g, '""');
+        result = result.replace(/\{int\}/g, '?');
+        result = result.replace(/\{float\}/g, '?');
+        result = result.replace(/\{word\}/g, '?');
+        result = result.replace(/\{\}/g, '?');
+        
+        // 2. Most specific: quoted strings with capturing groups containing character classes
+        result = result.replace(/"\(\[\^"\]\*\)"/g, '""');
+        result = result.replace(/"\(\[\^"\]\+\)"/g, '""');
+        result = result.replace(/'\(\[\^']\*\)'/g, "''");
+        result = result.replace(/'\(\[\^']\+\)'/g, "''");
+        
+        // 3. Character class patterns in capturing groups (without quotes)
+        result = result.replace(/\(\[\^"\]\*\)/g, '""');
+        result = result.replace(/\(\[\^"\]\+\)/g, '""');
+        result = result.replace(/\(\[\^']\*\)/g, "''");
+        result = result.replace(/\(\[\^']\+\)/g, "''");
+        result = result.replace(/\(\[\^\\s\]\+\)/g, '?');
+        
+        // 4. Digit patterns in capturing groups
+        result = result.replace(/\(\\d\+\)/g, '?');
+        result = result.replace(/\(\\d\*\)/g, '?');
+        
+        // 5. Common regex patterns
+        result = result.replace(/\(\.\*\?\)/g, '?');
+        result = result.replace(/\(\.\*\)/g, '?');
+        result = result.replace(/\(\.\+\?\)/g, '?');
+        result = result.replace(/\(\.\+\)/g, '?');
+        result = result.replace(/\(\\w\+\)/g, '?');
+        
+        // 6. Generic quoted strings (for any remaining cases)
+        result = result.replace(/"([^"]*?)"/g, '""');
+        result = result.replace(/'([^']*?)'/g, "''");
+        
+        // 7. Generic capturing groups (should be last)
+        result = result.replace(/\(([^)]+)\)/g, '?');
 
         // Clean up any remaining regex artifacts
         result = result
-            .replace(/\(\?\:.*?\)/g, '') // Remove non-capturing groups
+            .replace(/\(\?:[^)]*\)/g, '') // Remove non-capturing groups (fixed colon escaping)
             .replace(/\[.*?\]/g, '') // Remove character classes
             .replace(/\\\./g, '.') // Unescape dots
             .replace(/\\\(/g, '(') // Unescape parentheses
@@ -1256,7 +1256,8 @@ fun stepMethod() {
             .replace(/\\\]/g, ']') // Unescape square brackets
             .replace(/\\\{/g, '{') // Unescape curly brackets
             .replace(/\\\}/g, '}') // Unescape curly brackets
-            .replace(/\\\\/g, '\\'); // Unescape backslashes
+            .replace(/\\\\/g, '\\') // Unescape backslashes
+            .replace(/"\?"/g, '""'); //Fix for "([^"]*)"
 
         return result;
     }
@@ -1265,11 +1266,9 @@ fun stepMethod() {
      * Create completion item
      */
     private createCompletionItem(step: Step, insertText: string): CompletionItem {
-        const { smartSnippets } = this.settings;
-        
         return {
             label: step.text,
-            kind: smartSnippets ? CompletionItemKind.Snippet : CompletionItemKind.Text,
+            kind: CompletionItemKind.Snippet,
             insertText: insertText,
             documentation: step.documentation || step.desc,
             sortText: getSortPrefix(step.count, 3) + step.text,

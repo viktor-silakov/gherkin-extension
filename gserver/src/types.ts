@@ -35,7 +35,6 @@ export interface BaseSettings {
     enableRegexCaching?: boolean,
     // Autocompletion settings
     strictGherkinCompletion?: boolean,
-    smartSnippets?: boolean,
 }
 
 export interface Settings {
@@ -58,5 +57,4 @@ export interface Settings {
     enableRegexCaching?: boolean,
     // Autocompletion settings
     strictGherkinCompletion?: boolean,
-    smartSnippets?: boolean,
 }

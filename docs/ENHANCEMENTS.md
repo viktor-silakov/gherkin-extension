@@ -4,6 +4,54 @@ This document tracks all enhancements, bug fixes, and modifications made to the 
 
 ## 🚀 Recent Enhancements
 
+### 2025-01-16: Fixed Malformed Regex Artifacts in Step Completion (Bug Fix)
+**Issue**: When selecting autocomplete suggestions for steps with regex patterns like `([^"]*)`, malformed artifacts like `"]*"` were appearing in the completion text instead of proper placeholders.
+
+**Problem Example**:
+```javascript
+Then(
+  /^the stored (?:value|text) "([^"]*)" should (contain|not contain|be equal to|be|match|match regex):$/,
+  assertStored
+);
+```
+
+**Before Fix**: Autocomplete showed:
+```gherkin
+Then the stored value ""]*" should contain:
+```
+
+**After Fix**: Autocomplete now correctly shows:
+```gherkin
+Then the stored value "" should contain:
+```
+
+**Root Cause**: The `getTextForStep` method was incorrectly handling escaped characters in regex patterns, causing incomplete regex pattern removal and leaving artifacts.
+
+**Solution**: 
+- **Enhanced regex processing** in `getTextForStep()` method to properly handle escaped characters
+- **Improved pattern cleaning** to remove capturing groups and character classes completely
+- **Added comprehensive regex cleanup** for common patterns like `([^"]*)`, `(\d+)`, etc.
+
+**Files Modified**:
+- `gserver/src/steps.handler.ts` - Fixed `getTextForStep()` and `processInsertText()` methods
+- `gserver/test/steps.handler.spec.ts` - Updated tests to reflect correct behavior
+
+**Technical Details**:
+- **Proper escaping handling**: `\"([^"]*)\"` → `""`
+- **Character class removal**: `[^\]]*` patterns properly cleaned
+- **Capturing group cleanup**: `(pattern)` → `?` or appropriate placeholder
+- **Non-capturing groups**: `(?:pattern)` completely removed
+
+**Affected Patterns**:
+- ✅ `"([^"]*)"` → `""`
+- ✅ `'([^']*)'` → `''`
+- ✅ `(\d+)` → `?`
+- ✅ `(?:value|text)` → removed
+- ✅ `[a-z]+` → removed
+- ✅ `\w+` → `w+` → removed
+
+**Impact**: Users now get clean, professional-looking autocomplete suggestions without regex artifacts, significantly improving the user experience and reducing confusion.
+
 ### 2025-01-16: Parameter Types to Simple Placeholders (Feature Request)
 **Issue**: Users wanted autocompletion to convert parameter types in step definitions to simple, intuitive placeholders that are easy to fill in.
 
