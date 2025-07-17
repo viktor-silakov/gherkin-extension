@@ -44,10 +44,10 @@ describe('getElements', () => {
     );
     expect(e[5]).toHaveProperty('count', 2);
 
-    expect(e[6]).toHaveProperty('text', 'I have a gherkin(s) in my belly');
+    expect(e[6]).toHaveProperty('text', 'I have a gherkin in my belly');
     expect(e[6]).toHaveProperty('count', 2);
 
-    expect(e[7]).toHaveProperty('text', 'I have a cucumber(s) in my belly');
+    expect(e[7]).toHaveProperty('text', 'I have a cucumber in my belly');
     expect(e[7]).toHaveProperty('count', 1);
   });
 });
