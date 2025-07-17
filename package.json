@@ -1,6 +1,6 @@
 {
   "name": "gherkin-extension",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "viktor-silakov",
   "author": "Viktor Silakov, Alexander Krechik",
   "license": "MIT",
@@ -183,7 +183,7 @@
   "scripts": {
     "compile": "tsc -b",
     "watch": "tsc -b -w",
-    "package": "vsce package",
+    "package": "tsc -b && vsce package",
     "lint": "eslint ./gclient/src ./gserver/src --ext .ts,.tsx",
     "lint:fix": "eslint ./gclient/src ./gserver/src --ext .ts,.tsx --fix",
     "postinstall": "cd gclient && npm install && cd ../gserver && npm install && cd ..",

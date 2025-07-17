@@ -59,3 +59,8 @@ this.Given(/^I have a {int} in my belly$/, function (int1, next) {
 this.Then(/^I should have {float} dollars$/, function (float1, next) {
     next;
 });
+
+//Test step for getCompletionInsertText
+this.When(/^I do [a-z]+ and \w* thing$/, function (next) {
+    next;
+});

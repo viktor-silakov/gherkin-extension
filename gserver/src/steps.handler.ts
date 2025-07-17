@@ -76,32 +76,45 @@ export default class StepsHandler {
             return this.regexCache.get(regText)!;
         }
 
-        const regex = new RegExp(regText);
-        if (this.settings.enableRegexCaching) {
-            this.regexCache.set(regText, regex);
+        try {
+            const regex = new RegExp(regText);
+            if (this.settings.enableRegexCaching) {
+                this.regexCache.set(regText, regex);
+            }
+            return regex;
+        } catch (error) {
+            console.warn(`Invalid regex pattern: ${regText}`, error);
+            // Fallback to a simple regex that matches nothing
+            const fallbackRegex = /^$/;
+            if (this.settings.enableRegexCaching) {
+                this.regexCache.set(regText, fallbackRegex);
+            }
+            return fallbackRegex;
         }
-        return regex;
     }
 
     // Кэшированная версия partial RegExp
-    private getPartialRegExpCached(step: string): RegExp {
-        if (this.settings.enableRegexCaching && this.partialRegexCache.has(step)) {
-            return this.partialRegexCache.get(step)!;
+    private getPartialRegExpCached(step: string, regText?: string): RegExp {
+        const cacheKey = regText ? `${step}:${regText}` : step;
+        if (this.settings.enableRegexCaching && this.partialRegexCache.has(cacheKey)) {
+            return this.partialRegexCache.get(cacheKey)!;
         }
 
         try {
-            const partialRegText = this.getPartialRegText(step);
+            const partialRegText = regText 
+                ? this.getPartialRegTextFromProcessed(regText)
+                : this.getPartialRegText(step);
             const regex = new RegExp(partialRegText);
             if (this.settings.enableRegexCaching) {
-                this.partialRegexCache.set(step, regex);
+                this.partialRegexCache.set(cacheKey, regex);
             }
             return regex;
         } catch (err) {
             // Fallback to main regex
-            const regText = this.getRegTextForStepCached(step);
-            const regex = this.getRegExpCached(regText);
+            const fallbackRegText = regText || this.getRegTextForStepCached(step);
+            const regex = this.getRegExpCached(fallbackRegText);
             if (this.settings.enableRegexCaching) {
-                this.partialRegexCache.set(step, regex);
+                this.partialRegexCache.set(cacheKey, regex);
             }
             return regex;
         }
@@ -112,6 +125,14 @@ export default class StepsHandler {
         this.regexCache.clear();
         this.partialRegexCache.clear();
         this.processedStepCache.clear();
+    }
+
+    // Метод для обновления всех partialReg в элементах
+    private updatePartialRegexes(): void {
+        this.partialRegexCache.clear();
+        this.elements.forEach(element => {
+            element.partialReg = this.getPartialRegExpCached(element.text);
+        });
     }
 
 
@@ -127,7 +148,11 @@ export default class StepsHandler {
             this.settings.enableRegexCaching = this.settings.enableRegexCaching !== false;
         }
         
+        // Clear caches on initialization
+        this.clearCaches();
+        
         this.populate(root, steps);
+        
         if (syncfeatures === true) {
             this.setElementsHash(`${root}/**/*.feature`);
         } else if (typeof syncfeatures === 'string') {
@@ -393,21 +418,29 @@ export default class StepsHandler {
 
     getPartialRegParts(text: string): string[] {
     // We should separate got string into the parts by space symbol
-    // But we should not touch /()/ RegEx elements
+    // But we should not touch /()/ and /[]/ RegEx elements
         text = this.settings.pureTextSteps
             ? this.getRegTextForPureStep(text)
             : this.getRegTextForStep(text);
         let currString = '';
         let bracesMode = false;
+        let bracketsMode = false;
         let openingBracesNum = 0;
         let closingBracesNum = 0;
         const res = [];
+        
         for (let i = 0; i <= text.length; i++) {
             const currSymbol = text[i];
             if (i === text.length) {
                 res.push(currString);
+            } else if (bracketsMode) {
+                // Handle square brackets [] (character classes)
+                if (currSymbol === ']') {
+                    bracketsMode = false;
+                }
+                currString += currSymbol;
             } else if (bracesMode) {
-                //We should do this hard check to avoid circular braces errors
+                // Handle parentheses () (groups)
                 if (currSymbol === ')') {
                     closingBracesNum++;
                     if (openingBracesNum === closingBracesNum) {
@@ -427,6 +460,66 @@ export default class StepsHandler {
                     bracesMode = true;
                     openingBracesNum = 1;
                     closingBracesNum = 0;
+                } else if (currSymbol === '[') {
+                    currString += '[';
+                    bracketsMode = true;
+                } else {
+                    currString += currSymbol;
+                }
+            }
+        }
+        return res;
+    }
+
+    // Version that works with already processed regex text
+    getPartialRegPartsFromProcessed(processedText: string): string[] {
+        // Remove ^ and $ anchors from the processed regex
+        processedText = processedText.replace(/^\^|\$$/g, '');
+        
+        let currString = '';
+        let bracesMode = false;
+        let bracketsMode = false;
+        let openingBracesNum = 0;
+        let closingBracesNum = 0;
+        const res = [];
+        
+        for (let i = 0; i <= processedText.length; i++) {
+            const currSymbol = processedText[i];
+            const prevSymbol = i > 0 ? processedText[i - 1] : '';
+            
+            if (i === processedText.length) {
+                res.push(currString);
+            } else if (bracketsMode) {
+                // Handle square brackets [] (character classes)
+                if (currSymbol === ']') {
+                    bracketsMode = false;
+                }
+                currString += currSymbol;
+            } else if (bracesMode) {
+                // Handle parentheses () (groups)
+                if (currSymbol === ')') {
+                    closingBracesNum++;
+                    if (openingBracesNum === closingBracesNum) {
+                        bracesMode = false;
+                    }
+                }
+                if (currSymbol === '(') {
+                    openingBracesNum++;
+                }
+                currString += currSymbol;
+            } else {
+                // Handle escaped spaces for pure text steps
+                if (currSymbol === ' ' && prevSymbol !== '\\') {
+                    res.push(currString);
+                    currString = '';
+                } else if (currSymbol === '(') {
+                    currString += '(';
+                    bracesMode = true;
+                    openingBracesNum = 1;
+                    closingBracesNum = 0;
+                } else if (currSymbol === '[') {
+                    currString += '[';
+                    bracketsMode = true;
                 } else {
                     currString += currSymbol;
                 }
@@ -437,34 +530,82 @@ export default class StepsHandler {
 
     getPartialRegText(regText: string): string {
     //Same with main reg, only differ is match any string that same or less that current one
-        return this.getPartialRegParts(regText)
-            .map((el) => `(${el}|$)`)
+        const parts = this.getPartialRegParts(regText);
+        return parts
+            .map((el, index) => {
+                if (index === parts.length - 1) {
+                    // For the last element, allow partial matching by creating alternatives
+                    // for all possible prefixes of the word, include empty string for completion
+                    const alternatives = [];
+                    for (let i = 0; i <= el.length; i++) {
+                        const prefix = el.substring(0, i);
+                        // Escape special regex characters in the prefix
+                        const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        alternatives.push(escapedPrefix);
+                    }
+                    return `(${alternatives.join('|')})`;
+                } else {
+                    return `(${el}|$)`;
+                }
+            })
+            .join('( |$)')
+            .replace(/^\^|^/, '^');
+    }
+
+    // Version that works with already processed regex text  
+    getPartialRegTextFromProcessed(regText: string): string {
+        const parts = this.getPartialRegPartsFromProcessed(regText);
+        return parts
+            .map((el, index) => {
+                if (index === parts.length - 1) {
+                    // For the last element, allow partial matching by creating alternatives
+                    // for all possible prefixes of the word, include empty string for completion
+                    const alternatives = [];
+                    for (let i = 0; i <= el.length; i++) {
+                        const prefix = el.substring(0, i);
+                        // Escape special regex characters in the prefix
+                        const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        alternatives.push(escapedPrefix);
+                    }
+                    return `(${alternatives.join('|')})`;
+                } else {
+                    return `(${el}|$)`;
+                }
+            })
             .join('( |$)')
             .replace(/^\^|^/, '^');
     }
 
     getTextForStep(step: string): string {
-        // Remove all the backslashes, but handle escaped characters properly
+        //Remove "string start" and "string end" RegEx symbols
+        step = step.replace(/^\^|\$$/g, '');
+
+        // Create numbered placeholders for regex patterns in order of appearance
+        let placeholderCounter = 1;
+        
+        // Replace all regex patterns with numbered placeholders in the order they appear
+        step = step.replace(
+            /\\[sdw][*+?]?|\([^)]*\)|\[[^\]]*\][*+?]?|\(\?:[^)]*\)/g,
+            (match) => {
+                // Don't replace very short or empty capturing groups
+                if (match.startsWith('(') && match.endsWith(')') && match.length <= 10) {
+                    return '';
+                }
+                return `\${${placeholderCounter++}:}`;
+            }
+        );
+            
+        // Now process other backslashes
         step = step
             .replace(/\\"/g, '"')     // Replace \" with "
             .replace(/\\'/g, "'")     // Replace \' with '
             .replace(/\\n/g, '\n')    // Replace \n with newline
             .replace(/\\t/g, '\t')    // Replace \t with tab
             .replace(/\\r/g, '\r')    // Replace \r with carriage return
-            .replace(/\\s/g, 's')     // Replace \s with s (this is regex, keep as text)
-            .replace(/\\d/g, 'd')     // Replace \d with d (this is regex, keep as text)
-            .replace(/\\w/g, 'w')     // Replace \w with w (this is regex, keep as text)
             .replace(/\\\\/g, '\\')   // Replace \\ with \
             .replace(/\\(.)/g, '$1'); // Replace any other \x with x
 
-        //Remove "string start" and "string end" RegEx symbols
-        step = step.replace(/^\^|\$$/g, '');
-
-        // Clean up common regex patterns to make them more user-friendly
         step = step
-            .replace(/\([^)]*\)/g, '') // Remove capturing groups and their contents
-            .replace(/\[[^\]]*\]/g, '') // Remove character classes
-            .replace(/\(\?:[^)]*\)/g, '') // Remove non-capturing groups
             .replace(/\s+/g, ' ') // Normalize whitespace
             .trim(); // Remove leading/trailing whitespace
 
@@ -555,7 +696,7 @@ export default class StepsHandler {
                     : this.getRegTextForStepCached(step);
                 
                 const reg = this.getRegExpCached(regText);
-                const partialReg = this.getPartialRegExpCached(step);
+                const partialReg = this.getPartialRegExpCached(step, regText);
                 
                 //Todo we should store full value here
                 const text = this.settings.pureTextSteps
@@ -985,12 +1126,28 @@ fun stepMethod() {
             const beforeCursor = stepText.substring(0, cursorPosition);
             const afterCursor = stepText.substring(cursorPosition);
             
-            // Remove incomplete last word
-            const lastSpaceIndex = beforeCursor.lastIndexOf(' ');
-            if (lastSpaceIndex !== -1) {
-                stepText = beforeCursor.substring(0, lastSpaceIndex);
+            // Only remove the last word if cursor is in the middle of a word
+            // or if cursor is at the end and the last character is not a space
+            const isAtEnd = cursorPosition === stepText.length;
+            const isInMiddleOfWord = !isAtEnd && beforeCursor.length > 0 && 
+                                   beforeCursor[beforeCursor.length - 1] !== ' ' &&
+                                   afterCursor.length > 0 && 
+                                   afterCursor[0] !== ' ';
+            
+            if (isInMiddleOfWord) {
+                // Cursor is in the middle of a word, remove the incomplete word
+                const lastSpaceIndex = beforeCursor.lastIndexOf(' ');
+                if (lastSpaceIndex !== -1) {
+                    stepText = beforeCursor.substring(0, lastSpaceIndex);
+                } else {
+                    stepText = '';
+                }
+            } else if (isAtEnd) {
+                // Cursor is at the end - keep the full text
+                stepText = beforeCursor;
             } else {
-                stepText = '';
+                // Cursor is at word boundary but not at end - use text before cursor
+                stepText = beforeCursor;
             }
         }
 
@@ -1062,11 +1219,60 @@ fun stepMethod() {
 
             // Check if step matches the entered text
             if (stepText.trim()) {
-                return step.partialReg.test(stepText);
+                // First check basic partial regex
+                if (!step.partialReg.test(stepText)) {
+                    return false;
+                }
+                
+                // Additional validation to prevent false positives
+                return this.validateStepMatch(stepText, step);
             }
 
             return true;
         });
+    }
+
+    /**
+     * Validate if a step truly matches the entered text
+     * This prevents false positives from partial regex matching
+     */
+    private validateStepMatch(stepText: string, step: Step): boolean {
+        // If stepText is empty or only whitespace, allow all steps
+        if (!stepText.trim()) {
+            return true;
+        }
+        
+        const stepWords = step.text.split(/\s+/);
+        const enteredWords = stepText.split(/\s+/);
+        
+        // Check if entered words match the beginning of step
+        for (let i = 0; i < enteredWords.length; i++) {
+            if (i >= stepWords.length) {
+                return false; // More entered words than step words
+            }
+            
+            const enteredWord = enteredWords[i];
+            const stepWord = stepWords[i];
+            
+            // Skip empty words
+            if (!enteredWord) {
+                continue;
+            }
+            
+            // For the last entered word, check if it's a prefix of the step word
+            if (i === enteredWords.length - 1) {
+                if (!stepWord.startsWith(enteredWord)) {
+                    return false;
+                }
+            } else {
+                // For non-last words, they must match exactly
+                if (enteredWord !== stepWord) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
     }
 
     /**
@@ -1115,11 +1321,12 @@ fun stepMethod() {
         const combinations = generateCombinations(step.text, 0);
         
         for (const combination of combinations) {
+            const regText = this.getRegTextForStep(combination);
             const variant: Step = {
                 ...step,
                 text: combination,
-                reg: this.getRegExpCached(this.getRegTextForStep(combination)),
-                partialReg: this.getPartialRegExpCached(combination)
+                reg: this.getRegExpCached(regText),
+                partialReg: this.getPartialRegExpCached(combination, regText)
             };
             variants.push(variant);
         }
@@ -1171,10 +1378,17 @@ fun stepMethod() {
             return 0;
         }
         
-        const commonLength = normalizedEntered.length;
+        // For very short entered text (like "I"), return full step instead of partial
+        // But only if we're not looking for a specific completion and there's no space after
+        if (normalizedEntered.length <= 1 && !enteredText.endsWith(' ')) {
+            return 0;
+        }
+        
+        // Use original entered text length, not normalized
+        const commonLength = enteredText.length;
         
         // If the entered text ends with a space, use it as is
-        if (normalizedEntered.endsWith(' ')) {
+        if (enteredText.endsWith(' ')) {
             return commonLength;
         }
         
@@ -1198,15 +1412,16 @@ fun stepMethod() {
      */
     private processInsertText(text: string): string {
         let result = text;
+        let placeholderCounter = 1;
 
         // Handle specific patterns in order of specificity to avoid conflicts
         
         // 1. Parameter types
         result = result.replace(/\{string\}/g, '""');
-        result = result.replace(/\{int\}/g, '?');
-        result = result.replace(/\{float\}/g, '?');
-        result = result.replace(/\{word\}/g, '?');
-        result = result.replace(/\{\}/g, '?');
+        result = result.replace(/\{int\}/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\{float\}/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\{word\}/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\{\}/g, () => `\${${placeholderCounter++}:}`);
         
         // 2. Most specific: quoted strings with capturing groups containing character classes
         result = result.replace(/"\(\[\^"\]\*\)"/g, '""');
@@ -1219,30 +1434,34 @@ fun stepMethod() {
         result = result.replace(/\(\[\^"\]\+\)/g, '""');
         result = result.replace(/\(\[\^']\*\)/g, "''");
         result = result.replace(/\(\[\^']\+\)/g, "''");
-        result = result.replace(/\(\[\^\\s\]\+\)/g, '?');
+        result = result.replace(/\(\[\^\\s\]\+\)/g, () => `\${${placeholderCounter++}:}`);
         
         // 4. Digit patterns in capturing groups
-        result = result.replace(/\(\\d\+\)/g, '?');
-        result = result.replace(/\(\\d\*\)/g, '?');
+        result = result.replace(/\(\\d\+\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\\d\*\)/g, () => `\${${placeholderCounter++}:}`);
         
         // 5. Common regex patterns
-        result = result.replace(/\(\.\*\?\)/g, '?');
-        result = result.replace(/\(\.\*\)/g, '?');
-        result = result.replace(/\(\.\+\?\)/g, '?');
-        result = result.replace(/\(\.\+\)/g, '?');
-        result = result.replace(/\(\\w\+\)/g, '?');
+        result = result.replace(/\(\.\*\?\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\.\*\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\.\+\?\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\.\+\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\\w\+\)/g, () => `\${${placeholderCounter++}:}`);
         
         // 6. Generic quoted strings (for any remaining cases)
         result = result.replace(/"([^"]*?)"/g, '""');
         result = result.replace(/'([^']*?)'/g, "''");
         
-        // 7. Generic capturing groups (should be last)
-        result = result.replace(/\(([^)]+)\)/g, '?');
+        // 7. Character classes without parentheses
+        result = result.replace(/\[a-z\]\+/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\\w\*/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\[.*?\]/g, () => `\${${placeholderCounter++}:}`);
+        
+        // 8. Generic capturing groups (should be last)
+        result = result.replace(/\(([^)]+)\)/g, () => `\${${placeholderCounter++}:}`);
 
         // Clean up any remaining regex artifacts
         result = result
             .replace(/\(\?:[^)]*\)/g, '') // Remove non-capturing groups (fixed colon escaping)
-            .replace(/\[.*?\]/g, '') // Remove character classes
             .replace(/\\\./g, '.') // Unescape dots
             .replace(/\\\(/g, '(') // Unescape parentheses
             .replace(/\\\)/g, ')') // Unescape parentheses
@@ -1300,8 +1519,18 @@ fun stepMethod() {
      * Legacy method for backward compatibility with tests
      */
     getCompletionInsertText(regExpText: string, enteredText: string): string | null {
-        // Find step with matching regex text
-        const step = this.elements.find(s => s.text === regExpText);
+        // Find step with matching regex text by checking if the regex matches the original pattern
+        const step = this.elements.find(s => {
+            // Check if the step's regex source matches the expected pattern
+            try {
+                const stepRegSource = s.reg.source;
+                const expectedRegSource = `^${regExpText}$`;
+                return stepRegSource === expectedRegSource;
+            } catch (e) {
+                return false;
+            }
+        });
+        
         if (!step) {
             return null;
         }

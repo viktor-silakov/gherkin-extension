@@ -1,0 +1,3 @@
+plugins/vscode/src/api/**/index.ts
+plugins/vscode/src/api/**/api.ts
+plugins/vscode/src/api/**/configuration.ts

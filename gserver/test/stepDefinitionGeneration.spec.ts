@@ -105,7 +105,7 @@ describe('Step Definition Generation', () => {
                 steps: ['**/*.js']
             });
             const stepDef = handler.generateStepDefinition('I do something', 'Given');
-            
+
             expect(stepDef).toContain('Given(');
             expect(stepDef).toContain('async ({page}) =>');
             expect(stepDef).toContain('// TODO: implement step');
@@ -118,7 +118,7 @@ describe('Step Definition Generation', () => {
                 steps: ['**/*.ts']
             });
             const stepDef = handler.generateStepDefinition('I do something', 'Given');
-            
+
             expect(stepDef).toContain('Given(');
             expect(stepDef).toContain('async ({page}) =>');
             expect(stepDef).toContain('// TODO: implement step');
@@ -134,7 +134,7 @@ describe('Step Definition Generation', () => {
             const givenStep = stepsHandler.generateStepDefinition('I have something', 'Given');
             const whenStep = stepsHandler.generateStepDefinition('I do something', 'When');
             const thenStep = stepsHandler.generateStepDefinition('I see something', 'Then');
-            
+
             expect(givenStep).toContain('Given(');
             expect(whenStep).toContain('When(');
             expect(thenStep).toContain('Then(');
@@ -142,28 +142,28 @@ describe('Step Definition Generation', () => {
 
         it('should generate parameters for JS/TS steps with parameter types', () => {
             const stepDef = stepsHandler.generateStepDefinition('I enter "value" and wait 5 seconds', 'Given');
-            
+
             expect(stepDef).toContain('Given(\'I enter {string} and wait {int} seconds\', async ({page}, str1, int1) => {');
             expect(stepDef).toContain('// TODO: implement step');
         });
 
         it('should generate no additional parameters for steps without parameter types', () => {
             const stepDef = stepsHandler.generateStepDefinition('I click button', 'When');
-            
+
             expect(stepDef).toContain('When(\'I click button\', async ({page}) => {');
             expect(stepDef).not.toContain('str1');
         });
 
         it('should generate typed parameters for complex steps', () => {
             const stepDef = stepsHandler.generateStepDefinition('I activate2 "feature" for 5 second and 3 times', 'When');
-            
+
             expect(stepDef).toContain('When(\'I activate2 {string} for {int} second and {int} times\', async ({page}, str1, int1, int2) => {');
             expect(stepDef).toContain('// TODO: implement step');
         });
 
         it('should generate appropriate parameter names for different types', () => {
             const stepDef = stepsHandler.generateStepDefinition('I wait 2.5 seconds and enter "value" in "field"', 'Given');
-            
+
             expect(stepDef).toContain('Given(\'I wait {float} seconds and enter {string} in {string}\', async ({page}, float1, str1, str2) => {');
             expect(stepDef).toContain('// TODO: implement step');
         });
@@ -173,7 +173,7 @@ describe('Step Definition Generation', () => {
         it('should return available step definition files', () => {
             const files = stepsHandler.getStepDefinitionFiles();
             expect(Array.isArray(files)).toBe(true);
-            
+
             files.forEach(file => {
                 expect(file).toHaveProperty('label');
                 expect(file).toHaveProperty('path');
@@ -231,7 +231,7 @@ describe('Step Definition Generation', () => {
                 ...testSettings,
                 stepTemplate: '{gherkinType}(\'{stepPattern}\', async () => {\n    // Custom implementation\n});'
             });
-            
+
             const stepDef = handler.generateStepDefinition('I do something', 'Given');
             expect(stepDef).toContain('Given(\'I do something\', async () => {');
             expect(stepDef).toContain('// Custom implementation');
@@ -242,10 +242,10 @@ describe('Step Definition Generation', () => {
                 ...testSettings,
                 stepTemplate: '{gherkinType}(\'{stepPattern}\', ({page}{parameterList}) => {});'
             });
-            
+
             const whenStep = handler.generateStepDefinition('I click button', 'When');
             const thenStep = handler.generateStepDefinition('I see result', 'Then');
-            
+
             expect(whenStep).toContain('When(\'I click button\', ({page}) => {});');
             expect(thenStep).toContain('Then(\'I see result\', ({page}) => {});');
         });
@@ -255,7 +255,7 @@ describe('Step Definition Generation', () => {
                 ...testSettings,
                 stepTemplate: '{gherkinType}(\'{stepPattern}\', ({page}{parameterList}) => {});'
             });
-            
+
             const stepDef = handler.generateStepDefinition('I enter "value" and wait 5 seconds', 'Given');
             expect(stepDef).toContain('Given(\'I enter {string} and wait {int} seconds\', ({page}, str1, int1) => {});');
         });
@@ -266,7 +266,7 @@ describe('Step Definition Generation', () => {
                 steps: ['**/*.ts'],
                 stepTemplate: 'CUSTOM_{gherkinType}(\'{stepPattern}\');'
             });
-            
+
             const stepDef = handler.generateStepDefinition('I do something', 'Given');
             expect(stepDef).toContain('CUSTOM_Given(\'I do something\');');
             expect(stepDef).not.toContain('async ({page}) =>');
