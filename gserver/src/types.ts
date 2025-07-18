@@ -33,6 +33,7 @@ export interface BaseSettings {
     // Настройки оптимизации производительности
     enablePerformanceOptimizations?: boolean,
     enableRegexCaching?: boolean,
+    enableCompletionCaching?: boolean,
     // Autocompletion settings
     strictGherkinCompletion?: boolean,
 }
@@ -55,6 +56,7 @@ export interface Settings {
     // Настройки оптимизации производительности
     enablePerformanceOptimizations?: boolean,
     enableRegexCaching?: boolean,
+    enableCompletionCaching?: boolean,
     // Autocompletion settings
     strictGherkinCompletion?: boolean,
 }

@@ -4,6 +4,45 @@ This document tracks all enhancements, bug fixes, and modifications made to the 
 
 ## 🚀 Recent Enhancements
 
+### 2025-01-16: Added Completion Caching for Improved Performance (Performance Enhancement)
+**Issue**: Step completion (autocompletion) was slow on repeated requests. When pressing space after a Gherkin keyword (e.g., "When") multiple times, the completion list would take the same amount of time to appear each time, indicating no caching.
+
+**Problem**: The `getCompletionItems` method performed full processing on every call:
+- Parsing the line with `getGherkinMatch`
+- Processing step text and quotes
+- Filtering all steps from the elements array
+- Creating new `CompletionItem` objects
+- Sorting by usage count
+
+**Solution**: Added intelligent completion caching system:
+- **Completion cache**: New `completionCache` Map for storing processed completion results
+- **Smart cache key**: Based on line content, cursor position, and relevant settings
+- **Automatic cache invalidation**: Cache cleared when steps are updated or counts change
+- **Configurable caching**: New `enableCompletionCaching` setting (enabled by default)
+
+**Files Modified**:
+- `gserver/src/steps.handler.ts` - Added completion caching logic
+- `gserver/src/types.ts` - Added `enableCompletionCaching` setting
+
+**Technical Implementation**:
+- **Cache key generation**: `generateCompletionCacheKey()` creates unique keys based on line, position, settings, and step count
+- **Cache checks**: Early return from cache if available when `enableCompletionCaching` is true
+- **Cache invalidation**: Automatic clearing when `populate()` or `setElementsHash()` are called
+- **Memory management**: Cache cleared with other caches in `clearCaches()`
+
+**Performance Benefits**:
+- ✅ **Instant response** on repeated completion requests
+- ✅ **Reduced CPU usage** for duplicate completion operations
+- ✅ **Better user experience** with immediate autocompletion
+- ✅ **Configurable** - can be disabled if needed
+
+**Settings**:
+```json
+{
+  "enableCompletionCaching": true  // Default: true when enablePerformanceOptimizations is true
+}
+```
+
 ### 2025-01-16: Fixed Malformed Regex Artifacts in Step Completion (Bug Fix)
 **Issue**: When selecting autocomplete suggestions for steps with regex patterns like `([^"]*)`, malformed artifacts like `"]*"` were appearing in the completion text instead of proper placeholders.
 

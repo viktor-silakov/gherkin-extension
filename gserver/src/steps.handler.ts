@@ -67,6 +67,7 @@ export default class StepsHandler {
     private regexCache = new Map<string, RegExp>();
     private partialRegexCache = new Map<string, RegExp>();
     private processedStepCache = new Map<string, string>();
+    private completionCache = new Map<string, CompletionItem[]>();
     
 
 
@@ -125,6 +126,7 @@ export default class StepsHandler {
         this.regexCache.clear();
         this.partialRegexCache.clear();
         this.processedStepCache.clear();
+        this.completionCache.clear();
     }
 
     // Метод для обновления всех partialReg в элементах
@@ -133,6 +135,16 @@ export default class StepsHandler {
         this.elements.forEach(element => {
             element.partialReg = this.getPartialRegExpCached(element.text);
         });
+    }
+
+    private generateCompletionCacheKey(line: string, position: number, document: string): string {
+        // Create a key based on the line, position, and relevant settings
+        const settingsKey = `${this.settings.strictGherkinCompletion}-${this.settings.gherkinDefinitionPart}`;
+        // Include hash of elements to invalidate cache when steps change
+        const elementsHash = this.elements.length.toString();
+        // Include cursor position relative to quotes
+        const insideQuotes = this.isCursorInsideQuotes(line, position, document);
+        return `${line.trim()}-${position}-${settingsKey}-${elementsHash}-${insideQuotes}`;
     }
 
 
@@ -146,6 +158,7 @@ export default class StepsHandler {
         if (this.settings.enablePerformanceOptimizations !== false) {
             this.settings.enablePerformanceOptimizations = true;
             this.settings.enableRegexCaching = this.settings.enableRegexCaching !== false;
+            this.settings.enableCompletionCaching = this.settings.enableCompletionCaching !== false;
         }
         
         // Clear caches on initialization
@@ -174,6 +187,10 @@ export default class StepsHandler {
 
     setElementsHash(path: string): void {
         this.elemenstCountHash = {};
+        // Clear completion cache when updating step counts
+        if (this.settings.enableCompletionCaching) {
+            this.completionCache.clear();
+        }
         const files = glob.sync(path);
         files.forEach((f) => {
             const text = getFileContent(f);
@@ -583,7 +600,10 @@ export default class StepsHandler {
         // Create numbered placeholders for regex patterns in order of appearance
         let placeholderCounter = 1;
         
-        // Replace all regex patterns with numbered placeholders in the order they appear
+        // First handle optional text patterns like (s), (ed), \(s\), \(ed\), etc.
+        step = step.replace(/\\?\(([a-z]{1,3})\\?\)/g, '');
+        
+        // Replace all other regex patterns with appropriate placeholders
         step = step.replace(
             /\\[sdw][*+?]?|\([^)]*\)|\[[^\]]*\][*+?]?|\(\?:[^)]*\)/g,
             (match) => {
@@ -591,6 +611,22 @@ export default class StepsHandler {
                 if (match.startsWith('(') && match.endsWith(')') && match.length <= 4 && match === '()') {
                     return '';
                 }
+                
+                // Handle specific patterns with meaningful placeholders
+                if (match.match(/\(\\d[*+]\)/)) {
+                    return '1';
+                }
+                if (match.match(/\(\\w[*+]\)/)) {
+                    return 'word';
+                }
+                if (match.match(/\(\.\*\?\)|\(\.\*\)|\(\.\+\?\)|\(\.\+\)/)) {
+                    return 'value';
+                }
+                if (match.match(/\(\[\^"\]\*\)|\(\[\^"\]\+\)/)) {
+                    return '';
+                }
+                
+                // Default fallback
                 return `\${${placeholderCounter++}:}`;
             }
         );
@@ -707,9 +743,11 @@ export default class StepsHandler {
                 const partialReg = this.getPartialRegExpCached(step, regText);
                 
                 //Todo we should store full value here
-                const text = this.settings.pureTextSteps
+                const rawText = this.getTextForStep(step);
+                const isCucumberExpression = rawText.includes('{') && rawText.includes('}');
+                const text = this.settings.pureTextSteps || isCucumberExpression
                     ? step
-                    : this.getTextForStep(step);
+                    : this.processInsertText(rawText);
                 const id = 'step' + getMD5Id(text);
                 const count = this.getElementCount(id);
                 const stepObj = {
@@ -1142,9 +1180,69 @@ fun stepMethod() {
     }
 
     /**
+     * Check if cursor is inside double quotes in the step part of the line
+     */
+    private isCursorInsideQuotes(line: string, position: number, document: string): boolean {
+        // First get the gherkin match to find the step part
+        const match = this.getGherkinMatch(line, document);
+        if (!match) {
+            return false;
+        }
+        
+        // Calculate the start position of the step part
+        const beforeGherkin = match[1];
+        const gherkinWord = match[2];
+        const afterGherkin = match[3];
+        const stepPart = match[4];
+        
+        const stepStartPosition = beforeGherkin.length + gherkinWord.length + afterGherkin.length;
+        
+        // If cursor is before the step part, it's not inside quotes
+        if (position < stepStartPosition) {
+            return false;
+        }
+        
+        // Calculate cursor position relative to the step part
+        const relativePosition = position - stepStartPosition;
+        
+        // Check quotes only in the step part
+        const beforeCursor = stepPart.substring(0, relativePosition);
+        const afterCursor = stepPart.substring(relativePosition);
+        
+        // Count quotes before cursor in step part
+        const quotesBeforeCursor = (beforeCursor.match(/"/g) || []).length;
+        
+        // If odd number of quotes before cursor, we're inside quotes
+        // But we need to check if the quote is properly closed after cursor
+        if (quotesBeforeCursor % 2 === 1) {
+            // Check if there's a closing quote after cursor
+            const closingQuoteIndex = afterCursor.indexOf('"');
+            if (closingQuoteIndex !== -1) {
+                // There's a closing quote after cursor, so we're inside quotes
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
      * Get completion items for the current line
      */
     getCompletionItems(line: string, position: number, document: string): CompletionItem[] {
+        // Check if cursor is inside quotes - if so, don't show completion
+        if (this.isCursorInsideQuotes(line, position, document)) {
+            return [];
+        }
+
+        // Check cache first if completion caching is enabled
+        if (this.settings.enableCompletionCaching) {
+            const cacheKey = this.generateCompletionCacheKey(line, position, document);
+            if (this.completionCache.has(cacheKey)) {
+                return this.completionCache.get(cacheKey)!;
+            }
+        }
+
         const match = this.getGherkinMatch(line, document);
         if (!match) {
             return [];
@@ -1258,6 +1356,12 @@ fun stepMethod() {
             const bCount = this.getElementCount((b.data && b.data.stepId) || '');
             return bCount - aCount;
         });
+
+        // Cache the result if completion caching is enabled
+        if (this.settings.enableCompletionCaching) {
+            const cacheKey = this.generateCompletionCacheKey(line, position, document);
+            this.completionCache.set(cacheKey, completionItems);
+        }
 
         return completionItems;
     }
@@ -1820,9 +1924,10 @@ fun stepMethod() {
         
         // 1. Parameter types
         result = result.replace(/\{string\}/g, '""');
-        result = result.replace(/\{int\}/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\{float\}/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\{word\}/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\{stringInDoubleQuotes\}/g, '""');
+        result = result.replace(/\{int\}/g, '1');
+        result = result.replace(/\{float\}/g, '1.0');
+        result = result.replace(/\{word\}/g, 'WORD');
         result = result.replace(/\{\}/g, () => `\${${placeholderCounter++}:}`);
         
         // 2. Most specific: quoted strings with capturing groups containing character classes
@@ -1836,30 +1941,32 @@ fun stepMethod() {
         result = result.replace(/\(\[\^"\]\+\)/g, '""');
         result = result.replace(/\(\[\^']\*\)/g, "''");
         result = result.replace(/\(\[\^']\+\)/g, "''");
-        result = result.replace(/\(\[\^\\s\]\+\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\[\^\\s\]\+\)/g, 'text');
         
         // 4. Digit patterns in capturing groups
-        result = result.replace(/\(\\d\+\)/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\(\\d\*\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\\d\+\)/g, '1');
+        result = result.replace(/\(\\d\*\)/g, '1');
         
         // 5. Common regex patterns
-        result = result.replace(/\(\.\*\?\)/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\(\.\*\)/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\(\.\+\?\)/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\(\.\+\)/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\(\\w\+\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(\.\*\?\)/g, 'VALUE');
+        result = result.replace(/\(\.\*\)/g, 'VALUE');
+        result = result.replace(/\(\.\+\?\)/g, 'VALUE');
+        result = result.replace(/\(\.\+\)/g, 'VALUE');
+        result = result.replace(/\(\\w\+\)/g, 'VALUE');
         
         // 6. Generic quoted strings (for any remaining cases)
         result = result.replace(/"([^"]*?)"/g, '""');
         result = result.replace(/'([^']*?)'/g, "''");
         
         // 7. Character classes without parentheses
-        result = result.replace(/\[a-z\]\+/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\\w\*/g, () => `\${${placeholderCounter++}:}`);
-        result = result.replace(/\[.*?\]/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\[\^\\s\]\+/g, 'text');  // More specific first
+        result = result.replace(/\[a-z\]\+/g, 'text');
+        result = result.replace(/\\w\*/g, 'word');
+        result = result.replace(/\[.*?\]\+/g, 'text');    // Character classes with + 
+        result = result.replace(/\[.*?\]/g, 'option');    // Generic character classes
         
         // 8. Generic capturing groups (should be last)
-        result = result.replace(/\(([^)]+)\)/g, () => `\${${placeholderCounter++}:}`);
+        result = result.replace(/\(([^)]+)\)/g, 'value');
 
         // Clean up any remaining regex artifacts
         result = result

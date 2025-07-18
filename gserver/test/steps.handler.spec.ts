@@ -26,6 +26,42 @@ const settings = {
 
 const s = new StepsHandler(__dirname, settings);
 
+describe('Completion Caching', () => {
+  it('should cache completion results for repeated requests', () => {
+    const line = 'When I do something';
+    const position = 5;
+    const document = 'Feature: Test\n  Scenario: Test\n    When I do something';
+    
+    // First call - should populate cache
+    const firstResult = s.getCompletionItems(line, position, document);
+    
+    // Second call - should use cache
+    const secondResult = s.getCompletionItems(line, position, document);
+    
+    // Results should be identical
+    expect(firstResult).toEqual(secondResult);
+    expect(firstResult.length).toBeGreaterThan(0);
+  });
+  
+  it('should clear completion cache when steps are updated', () => {
+    const line = 'When I do something';
+    const position = 5;
+    const document = 'Feature: Test\n  Scenario: Test\n    When I do something';
+    
+    // First call to populate cache
+    const firstResult = s.getCompletionItems(line, position, document);
+    
+    // Update steps (should clear cache)
+    s.populate(__dirname, settings.steps);
+    
+    // Second call after cache clear
+    const secondResult = s.getCompletionItems(line, position, document);
+    
+    // Results should still be functionally equivalent
+    expect(firstResult.length).toBe(secondResult.length);
+  });
+});
+
 describe('geStepDefinitionMatch', () => {
   describe('gherkin strings types', () => {
     const strings = [
@@ -947,5 +983,51 @@ When('I wait for {int} seconds', async ({ page }, seconds) => {
       expect(step.text).toMatch(/wait.*seconds/);
       expect(step.reg.test(testText)).toBe(true);
     }
+  });
+});
+
+describe('Completion inside quotes', () => {
+  it('should not show completion when cursor is inside double quotes', () => {
+    const line = 'Then the "cursor is here" contains text "another param"';
+    const position = line.indexOf('cursor is here') + 5; // Position inside first quotes
+    const document = 'Feature: Test\n  Scenario: Test\n    ' + line;
+    
+    const completion = s.getCompletionItems(line, position, document);
+    
+    // Should not show completion inside quotes
+    expect(completion).toHaveLength(0);
+  });
+  
+  it('should not show completion when cursor is inside second parameter quotes', () => {
+    const line = 'Then the "param1" contains text "cursor here"';
+    const position = line.indexOf('cursor here') + 3; // Position inside second quotes
+    const document = 'Feature: Test\n  Scenario: Test\n    ' + line;
+    
+    const completion = s.getCompletionItems(line, position, document);
+    
+    // Should not show completion inside quotes
+    expect(completion).toHaveLength(0);
+  });
+  
+  it('should show completion when cursor is outside quotes', () => {
+    const line = 'When I do';
+    const position = line.length; // Position after the step text
+    const document = 'Feature: Test\n  Scenario: Test\n    ' + line;
+    
+    const completion = s.getCompletionItems(line, position, document);
+    
+    // Should show completion outside quotes
+    expect(completion.length).toBeGreaterThan(0);
+  });
+  
+  it('should show completion when cursor is before quotes', () => {
+    const line = 'When I ';
+    const position = line.length; // Position before quotes would be added
+    const document = 'Feature: Test\n  Scenario: Test\n    ' + line;
+    
+    const completion = s.getCompletionItems(line, position, document);
+    
+    // Should show completion before quotes
+    expect(completion.length).toBeGreaterThan(0);
   });
 });
