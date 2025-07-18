@@ -10,6 +10,7 @@ import {
     Range,
     CompletionItem,
     CompletionItemKind,
+    InsertTextFormat,
 } from 'vscode-languageserver';
 
 import {
@@ -661,6 +662,9 @@ export default class StepsHandler {
     getStepTextInvariants(step: string): string[] {
     //Handle regexp's like 'I do (one|to|three)'
     //TODO - generate correct num of invariants for the circular braces
+        if (!step) {
+            return [];
+        }
         const bracesRegEx = /(\([^)()]+\|[^()]+\))/;
         if (~step.search(bracesRegEx)) {
             const match = step.match(bracesRegEx);
@@ -705,7 +709,7 @@ export default class StepsHandler {
         comments: JSDocComments
     ): Step[] {
         // Debug logging for step creation
-        if (stepPart.includes('the "([^"]*)" (.+)')) {
+        if (stepPart && stepPart.includes('the "([^"]*)" (.+)')) {
             console.log('DEBUG getSteps execution:');
             console.log('  stepPart:', stepPart);
             console.log('  gherkin received:', gherkin);
@@ -716,7 +720,7 @@ export default class StepsHandler {
             ? this.getStepTextInvariants(stepPart)
             : [stepPart];
         const desc = this.getDescForStep(fullStepLine);
-        const comment = comments[def.range.start.line];
+        const comment = def && def.range ? comments[def.range.start.line] : undefined;
         const documentation = comment
             ? this.getDocumentation(comment)
             : fullStepLine;
@@ -863,7 +867,7 @@ export default class StepsHandler {
                     const gherkin = getGherkinTypeLower(gherkinString);
                     
                     // Debug logging for gherkin type determination
-                    if (stepPart.includes('the "([^"]*)" (.+)')) {
+                    if (stepPart && stepPart.includes('the "([^"]*)" (.+)')) {
                         console.log('DEBUG gherkin type determination:');
                         console.log('  gherkinString:', gherkinString);
                         console.log('  gherkin type:', gherkin);
@@ -878,7 +882,7 @@ export default class StepsHandler {
                         Range.create(pos, pos)
                     );
                     // Debug logging for gherkin type passed to getSteps
-                    if (stepPart.includes('the "([^"]*)" (.+)')) {
+                    if (stepPart && stepPart.includes('the "([^"]*)" (.+)')) {
                         console.log('DEBUG getSteps call:');
                         console.log('  stepPart:', stepPart);
                         console.log('  gherkin passed to getSteps:', gherkin);
@@ -1833,7 +1837,7 @@ fun stepMethod() {
         
         // If entered text is empty, return full step
         if (!enteredText.trim()) {
-            return this.processInsertText(stepText);
+            return this.processCompletionInsertText(stepText);
         }
 
         // Check if the step matches the entered text
@@ -1849,7 +1853,7 @@ fun stepMethod() {
 
         // Return the remaining part
         const remainingText = stepText.substring(commonLength);
-        return this.processInsertText(remainingText);
+        return this.processCompletionInsertText(remainingText);
     }
 
     /**
@@ -1991,6 +1995,111 @@ fun stepMethod() {
     }
 
     /**
+     * Process insert text for completion items with VS Code snippets
+     */
+    private processCompletionInsertText(text: string): string {
+        let result = text;
+        
+        // Define patterns with their replacement functions (no closures)
+        const patterns = [
+            // Cucumber expressions (highest priority)
+            { pattern: /\{string\}/g, getReplacement: (counter: number) => `"\${${counter}:value}"` },
+            { pattern: /\{stringInDoubleQuotes\}/g, getReplacement: (counter: number) => `"\${${counter}:value}"` },
+            { pattern: /\{int\}/g, getReplacement: (counter: number) => `\${${counter}:1}` },
+            { pattern: /\{float\}/g, getReplacement: (counter: number) => `\${${counter}:1.0}` },
+            { pattern: /\{word\}/g, getReplacement: (counter: number) => `\${${counter}:WORD}` },
+            { pattern: /\{\}/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+            
+            // Most specific quoted patterns first
+            { pattern: /"\(\[\^"\]\*\)"/g, getReplacement: (counter: number) => `"\${${counter}:value}"` },
+            { pattern: /"\(\[\^"\]\+\)"/g, getReplacement: (counter: number) => `"\${${counter}:value}"` },
+            { pattern: /'\(\[\^']\*\)'/g, getReplacement: (counter: number) => `'\${${counter}:value}'` },
+            { pattern: /'\(\[\^']\+\)'/g, getReplacement: (counter: number) => `'\${${counter}:value}'` },
+            
+            // Digit patterns
+            { pattern: /\(\\d\+\)/g, getReplacement: (counter: number) => `\${${counter}:1}` },
+            { pattern: /\(\\d\*\)/g, getReplacement: (counter: number) => `\${${counter}:1}` },
+            
+            // Character class patterns in capturing groups (without quotes)
+            { pattern: /\(\[\^"\]\*\)/g, getReplacement: (counter: number) => `"\${${counter}:value}"` },
+            { pattern: /\(\[\^"\]\+\)/g, getReplacement: (counter: number) => `"\${${counter}:value}"` },
+            { pattern: /\(\[\^']\*\)/g, getReplacement: (counter: number) => `'\${${counter}:value}'` },
+            { pattern: /\(\[\^']\+\)/g, getReplacement: (counter: number) => `'\${${counter}:value}'` },
+            { pattern: /\(\[\^\\s\]\+\)/g, getReplacement: (counter: number) => `\${${counter}:text}` },
+            { pattern: /\(\[a-z\]\+\)/g, getReplacement: (counter: number) => `\${${counter}:text}` },
+            { pattern: /\(\\w\+\)/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+            
+            // Common regex patterns
+            { pattern: /\(\.\*\?\)/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+            { pattern: /\(\.\*\)/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+            { pattern: /\(\.\+\?\)/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+            { pattern: /\(\.\+\)/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+            
+            // Generic capturing groups (should be last)
+            { pattern: /\(([^)]+)\)/g, getReplacement: (counter: number) => `\${${counter}:value}` },
+        ];
+        
+        // Collect all matches with their positions
+        const matches: Array<{ start: number; end: number; match: string; patternIndex: number }> = [];
+        
+        for (let i = 0; i < patterns.length; i++) {
+            const { pattern } = patterns[i];
+            const regex = new RegExp(pattern.source, pattern.flags);
+            let match;
+            
+            while ((match = regex.exec(result)) !== null) {
+                matches.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    match: match[0],
+                    patternIndex: i
+                });
+            }
+        }
+        
+        // Sort matches by position (left to right)
+        matches.sort((a, b) => a.start - b.start);
+        
+        // Remove overlapping matches (keep the first one found)
+        const filteredMatches = matches.filter((match, index) => {
+            return !matches.slice(0, index).some(prev => 
+                (match.start >= prev.start && match.start < prev.end) ||
+                (match.end > prev.start && match.end <= prev.end)
+            );
+        });
+        
+        // Apply replacements from right to left to avoid index shifting
+        filteredMatches.reverse();
+        
+        for (let i = 0; i < filteredMatches.length; i++) {
+            const match = filteredMatches[i];
+            const placeholderNumber = filteredMatches.length - i; // Reverse numbering
+            const replacement = patterns[match.patternIndex].getReplacement(placeholderNumber);
+            result = result.substring(0, match.start) + replacement + result.substring(match.end);
+        }
+
+        // Clean up any remaining regex artifacts
+        result = result
+            .replace(/\(\?:[^)]*\)/g, '') // Remove non-capturing groups
+            .replace(/\\\./g, '.') // Unescape dots
+            .replace(/\\\(/g, '(') // Unescape parentheses
+            .replace(/\\\)/g, ')') // Unescape parentheses
+            .replace(/\\\|/g, '|') // Unescape pipes
+            .replace(/\\\+/g, '+') // Unescape plus
+            .replace(/\\\*/g, '*') // Unescape asterisk
+            .replace(/\\\?/g, '?') // Unescape question mark
+            .replace(/\\\^/g, '^') // Unescape caret
+            .replace(/\\\$/g, '$') // Unescape dollar
+            .replace(/\\\[/g, '[') // Unescape square brackets
+            .replace(/\\\]/g, ']') // Unescape square brackets
+            .replace(/\\\{/g, '{') // Unescape curly brackets
+            .replace(/\\\}/g, '}') // Unescape curly brackets
+            .replace(/\\\\/g, '\\') // Unescape backslashes
+
+        return result;
+    }
+
+    /**
      * Create completion item
      */
     private createCompletionItem(step: Step, insertText: string): CompletionItem {
@@ -1998,6 +2107,7 @@ fun stepMethod() {
             label: step.text,
             kind: CompletionItemKind.Snippet,
             insertText: insertText,
+            insertTextFormat: InsertTextFormat.Snippet,
             documentation: step.documentation || step.desc,
             sortText: getSortPrefix(step.count, 3) + step.text,
             data: {
